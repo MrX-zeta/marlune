@@ -6,8 +6,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.MusicRepository
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalTime
@@ -23,6 +25,7 @@ class HomeViewModel(repository: MusicRepository) : ViewModel() {
 
     val uiState: StateFlow<HomeUiState> = repository.library
         .map { state -> state.toHomeUiState() }
+        .flowOn(Dispatchers.Default) // el ordenado por fecha corre fuera del hilo principal
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),

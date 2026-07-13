@@ -9,44 +9,61 @@ import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
 import com.luis.marlune.domain.model.Song
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
  * ViewModel de Biblioteca: proyecta la biblioteca LOCAL real ([MusicRepository]) por categoría.
- * Álbumes/Artistas/Canciones se derivan de MediaStore; las Listas llegarán con Room (Fase 3), por
- * lo que hasta entonces esa categoría queda vacía. Ofrece un escaneo manual (pull-to-refresh) como
- * red de seguridad. Sin mocks, sin red.
+ *
+ * Rendimiento: las entradas por categoría (Álbumes/Artistas/Canciones → [LibraryEntry]) se derivan
+ * UNA sola vez por cambio de biblioteca, en `Dispatchers.Default`, y quedan cacheadas ([entries]).
+ * Cambiar de chip solo cambia QUÉ lista cacheada se muestra: no re-consulta MediaStore ni re-agrupa,
+ * y no toca el hilo principal. Las Listas llegarán con Room (Fase 3). Sin mocks, sin red.
  */
 class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
 
     private val selectedFilter = MutableStateFlow(LibraryFilter.SONGS)
     private val refreshing = MutableStateFlow(false)
 
-    val uiState: StateFlow<LibraryUiState> =
-        combine(
-            repository.library,
-            repository.albums,
-            repository.artists,
-            selectedFilter,
-            refreshing,
-        ) { library, albums, artists, filter, isRefreshing ->
-            val loading = library is LibraryState.Loading
+    /** Entradas por categoría, precalculadas fuera del hilo principal y memorizadas. */
+    private data class Entries(
+        val byFilter: Map<LibraryFilter, List<LibraryEntry>>,
+        val isLoading: Boolean,
+    )
+
+    private val entries: StateFlow<Entries> =
+        combine(repository.library, repository.albums, repository.artists) { library, albums, artists ->
             val songs = (library as? LibraryState.Content)?.songs.orEmpty()
-            LibraryUiState(
-                selectedFilter = filter,
-                entriesByFilter = mapOf(
+            Entries(
+                byFilter = mapOf(
                     // Listas: vacío hasta Room (Fase 3).
                     LibraryFilter.PLAYLISTS to emptyList(),
                     LibraryFilter.ALBUMS to albums.map { it.toEntry() },
                     LibraryFilter.ARTISTS to artists.map { it.toEntry() },
                     LibraryFilter.SONGS to songs.map { it.toEntry() },
                 ),
-                isLoading = loading,
+                isLoading = library is LibraryState.Loading,
+            )
+        }.flowOn(Dispatchers.Default) // agrupación + mapeo a UI fuera del hilo principal
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(5_000),
+                initialValue = Entries(emptyMap(), isLoading = true),
+            )
+
+    // Cambiar de chip o el estado de refresco solo re-empaqueta el mapa YA calculado (barato).
+    val uiState: StateFlow<LibraryUiState> =
+        combine(entries, selectedFilter, refreshing) { derived, filter, isRefreshing ->
+            LibraryUiState(
+                selectedFilter = filter,
+                entriesByFilter = derived.byFilter,
+                isLoading = derived.isLoading,
                 isRefreshing = isRefreshing,
             )
         }.stateIn(
