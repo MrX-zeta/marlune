@@ -34,7 +34,8 @@ fun resolveTrackSwipe(
 /**
  * Animación de confirmación del cambio de pista: la carátula sale por un lado y la nueva entra
  * por el opuesto. La DIRECCIÓN sale de [forward] —que deriva del cambio de pista real leído del
- * player— con un ÚNICO mapeo aquí (siguiente = sale por la derecha; anterior = por la izquierda).
+ * player— con un ÚNICO mapeo aquí (siguiente = la nueva entra por la derecha / la actual sale por
+ * la izquierda; anterior = al revés).
  *
  * NO ejecuta ningún comando: el comando (skipToNext/skipToPrevious) es solo el disparador; esta
  * función solo anima. Así todos los orígenes (swipe, botones, notificación, auto-avance) animan
@@ -47,7 +48,9 @@ suspend fun runTrackSlideAnimation(
     widthPx: Float,
     reducedMotion: Boolean,
 ) {
-    val exitSign = if (forward) 1f else -1f // ÚNICO punto que mapea dirección → animación
+    // ÚNICO punto que mapea dirección de cambio de pista → dirección de animación:
+    // siguiente → la actual sale por la izquierda (−) y la nueva entra por la derecha.
+    val exitSign = if (forward) -1f else 1f
     if (reducedMotion) {
         offsetX.snapTo(0f)
         return
