@@ -13,6 +13,16 @@ import kotlinx.coroutines.flow.stateIn
 import java.util.Locale
 
 /**
+ * Estado de la biblioteca local. `Loading` es el arranque (aún no llegó la primera consulta de
+ * MediaStore); `Content` ya trae la lista real (que puede estar vacía si no hay música). Permite a
+ * la UI distinguir "cargando" de "sin música".
+ */
+sealed interface LibraryState {
+    data object Loading : LibraryState
+    data class Content(val songs: List<Song>) : LibraryState
+}
+
+/**
  * Única puerta a la biblioteca LOCAL. Comparte un solo Flow de canciones (un solo
  * `ContentObserver`) y deriva de él álbumes, artistas y la búsqueda local. Sin red.
  */
@@ -21,9 +31,18 @@ class MusicRepository(
     scope: CoroutineScope,
 ) {
 
-    /** Biblioteca completa, auto-refrescada por MediaStore. Compartida entre todos los consumidores. */
-    val songs: StateFlow<List<Song>> = source.observeSongs()
-        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    /**
+     * Biblioteca completa, auto-refrescada por MediaStore. Compartida entre todos los consumidores
+     * (un único observer). Empieza en [LibraryState.Loading] hasta la primera consulta.
+     */
+    val library: StateFlow<LibraryState> = source.observeSongs()
+        .map<List<Song>, LibraryState> { LibraryState.Content(it) }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), LibraryState.Loading)
+
+    /** Lista de canciones ya cargada (vacía mientras está en Loading). */
+    private val songs: Flow<List<Song>> = library.map { state ->
+        (state as? LibraryState.Content)?.songs.orEmpty()
+    }
 
     val albums: Flow<List<Album>> = songs.map { list -> deriveAlbums(list) }
 
@@ -44,6 +63,16 @@ class MusicRepository(
                 }
             }
         }
+    }
+
+    /** Refresco manual inmediato (re-consulta MediaStore). */
+    fun refresh() {
+        source.requestRefresh()
+    }
+
+    /** Escaneo manual (red de seguridad): revisa directorios públicos y re-consulta. Suspende. */
+    suspend fun rescan() {
+        source.rescanPublicMedia()
     }
 
     private fun deriveAlbums(list: List<Song>): List<Album> =

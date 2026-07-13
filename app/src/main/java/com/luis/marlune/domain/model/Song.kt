@@ -20,6 +20,8 @@ data class Song(
     val trackNumber: Int,
     val year: Int,
     val genre: String?,
+    /** `DATE_ADDED` de MediaStore (segundos epoch). Ordena "recién añadidas" hasta que exista historial. */
+    val dateAdded: Long,
     val contentUri: Uri,
     val artworkUri: Uri?,
 )
