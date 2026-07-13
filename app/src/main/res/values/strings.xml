@@ -1,3 +1,8 @@
 <resources>
     <string name="app_name">marlune</string>
+
+    <!-- Barra de navegación inferior -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_library">Biblioteca</string>
+    <string name="nav_search">Buscar</string>
 </resources>
