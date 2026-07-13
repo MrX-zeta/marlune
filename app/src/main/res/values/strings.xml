@@ -26,6 +26,8 @@
     <string name="greeting_night">Buenas noches</string>
     <string name="home_section_recent">Escuchado hace poco</string>
     <string name="home_see_all">Ver todo</string>
+    <string name="home_empty_title">Sin música todavía</string>
+    <string name="home_empty_hint">Copia canciones a tu dispositivo y aparecerán aquí, solas.</string>
     <string name="shortcut_liked">Me gusta</string>
     <string name="shortcut_playlists">Listas</string>
     <string name="shortcut_albums">Álbumes</string>
@@ -42,6 +44,8 @@
     <string name="library_menu_play">Reproducir</string>
     <string name="library_menu_add_queue">Añadir a la cola</string>
     <string name="library_menu_add_playlist">Añadir a una lista</string>
+    <string name="library_empty_title">Tu biblioteca está vacía</string>
+    <string name="library_empty_hint">Añade música local y desliza hacia abajo para actualizar.</string>
 
     <!-- Buscar -->
     <string name="search_title">Buscar</string>

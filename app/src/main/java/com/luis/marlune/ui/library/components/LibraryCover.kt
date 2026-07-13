@@ -1,5 +1,6 @@
 package com.luis.marlune.ui.library.components
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -12,11 +13,16 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 
 /**
- * Portada de una entrada de Biblioteca, teñida con su acento asociado (color dinámico del
- * prompt 1) para que las listas se distingan de un vistazo y no sean un muro monocromo.
+ * Portada de una entrada de Biblioteca: la carátula real (content URI de MediaStore, Coil + caché)
+ * sobre un placeholder teñido con su acento asociado, para que las listas se distingan de un
+ * vistazo. Si no hay carátula (o falla, p. ej. artistas sin arte), queda el degradado + icono.
  * Solo cambia el acento; la escala neutra no se toca. La forma la decide la categoría
  * (círculo para listas/artistas, cuadrado redondeado para álbumes/canciones).
  */
@@ -26,6 +32,7 @@ fun LibraryCover(
     icon: ImageVector,
     shape: Shape,
     modifier: Modifier = Modifier,
+    artworkUri: Uri? = null,
 ) {
     Box(
         modifier = modifier
@@ -44,5 +51,16 @@ fun LibraryCover(
             tint = accent,
             modifier = Modifier.size(22.dp),
         )
+        if (artworkUri != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(artworkUri)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize(),
+            )
+        }
     }
 }
