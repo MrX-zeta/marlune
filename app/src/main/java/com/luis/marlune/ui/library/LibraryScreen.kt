@@ -4,12 +4,14 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -99,7 +101,7 @@ fun LibraryScreen(
             PullToRefreshBox(
                 isRefreshing = uiState.isRefreshing,
                 onRefresh = onRefresh,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
                 when {
                     uiState.isLoading -> LoadingRows(
@@ -147,13 +149,14 @@ private fun LibraryList(
     val coverShape = if (filter == LibraryFilter.PLAYLISTS || isArtist) CircleCover else RoundedCover
     val coverIcon = coverIconFor(isArtist)
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+    // LazyColumn: solo compone (y solo pide carátula a Coil) las filas VISIBLES; keys estables por id.
+    // El stagger corre una vez, solo en la primera pantalla visible; el scroll queda instantáneo.
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = 24.dp),
     ) {
-        entries.forEachIndexed { index, entry ->
-            StaggeredReveal(index = index, enabled = animateEntrance) {
+        itemsIndexed(entries, key = { _, entry -> entry.id }) { index, entry ->
+            StaggeredReveal(index = index, enabled = animateEntrance && index < StaggerVisibleCount) {
                 LibraryRow(
                     entry = entry,
                     coverIcon = coverIcon,
@@ -163,9 +166,11 @@ private fun LibraryList(
                 )
             }
         }
-        Spacer(Modifier.height(24.dp))
     }
 }
+
+/** Filas que reciben la entrada escalonada en la primera pantalla (grupos de 3–7 según la skill). */
+private const val StaggerVisibleCount = 7
 
 @Composable
 private fun LibraryTopBar() {

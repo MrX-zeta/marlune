@@ -2,13 +2,14 @@ package com.luis.marlune.ui.search
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -84,13 +85,16 @@ fun SearchScreen(
             )
             Spacer(Modifier.height(20.dp))
 
-            if (uiState.isSearching) {
-                SearchResults(results = uiState.results, onOpenTrack = onOpenTrack)
-            } else {
-                ExploreArea(
-                    recentSearches = uiState.recentSearches,
-                    onRecentSelected = onRecentSelected,
-                )
+            // Área desplazable acotada: la lista perezosa maneja su propio scroll dentro de este hueco.
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                if (uiState.isSearching) {
+                    SearchResults(results = uiState.results, onOpenTrack = onOpenTrack)
+                } else {
+                    ExploreArea(
+                        recentSearches = uiState.recentSearches,
+                        onRecentSelected = onRecentSelected,
+                    )
+                }
             }
         }
     }
@@ -105,18 +109,19 @@ private fun SearchResults(
         EmptyHint(text = stringResource(R.string.search_no_results))
         return
     }
-    Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-        results.forEachIndexed { index, song ->
-            // key por id: cada resultado nuevo entra con fade+rise; los que persisten no re-animan.
-            androidx.compose.runtime.key(song.id) {
-                StaggeredReveal(index = index) {
-                    SearchResultRow(song = song, onClick = { onOpenTrack(song) })
-                }
+    // LazyColumn: solo compone y pide carátula para los resultados VISIBLES; keys estables por id
+    // (un resultado que persiste entre búsquedas no re-anima; los nuevos entran con fade+rise).
+    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+        itemsIndexed(results, key = { _, song -> song.id }) { index, song ->
+            StaggeredReveal(index = index, enabled = index < StaggerVisibleCount) {
+                SearchResultRow(song = song, onClick = { onOpenTrack(song) })
             }
         }
-        Spacer(Modifier.height(24.dp))
     }
 }
+
+/** Resultados que reciben la entrada escalonada en la primera pantalla; el scroll queda instantáneo. */
+private const val StaggerVisibleCount = 7
 
 @Composable
 private fun ExploreArea(
