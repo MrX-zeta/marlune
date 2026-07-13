@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 
-    <style name="Theme.Marlune" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Tema de ventana dark-only: fondo neutro de Marlune, sin barra de acción.
+         El color real de la UI lo aplica Compose (MarluneTheme). -->
+    <style name="Theme.Marlune" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/marlune_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>
