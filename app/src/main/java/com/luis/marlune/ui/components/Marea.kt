@@ -92,7 +92,7 @@ fun Marea(
     val targetAmplitude = if (isPlaying && !reducedMotion) maxAmplitude else 0f
     val amplitudeDp by animateFloatAsState(
         targetValue = targetAmplitude,
-        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
         label = "mareaAmplitude",
     )
 
