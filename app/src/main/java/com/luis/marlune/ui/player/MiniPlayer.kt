@@ -2,7 +2,6 @@ package com.luis.marlune.ui.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -50,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
 import com.luis.marlune.ui.components.PressableCard
 import com.luis.marlune.ui.home.components.TrackThumbnail
+import com.luis.marlune.ui.player.components.resolveTrackSwipe
+import com.luis.marlune.ui.player.components.runTrackCrossSlide
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.delay
@@ -65,7 +66,7 @@ private const val PlayPressScale = 0.88f
 // Recorrido (corto) para llegar al progreso 1 y magnitud del "levantamiento" acoplado.
 private val ExpandDragDistance = 100.dp
 private val ExpandLift = 20.dp
-private const val TrackCommitFraction = 0.28f // fracción del ancho para confirmar cambio de pista
+private const val TrackCommitFraction = 0.22f // ~22 % del ancho para confirmar cambio de pista
 private const val TrackFlingVelocity = 1000f
 private const val TapHighlightDelayMillis = 100L // espera antes de iluminar (evita destello al deslizar)
 
@@ -122,6 +123,9 @@ fun MiniPlayer(
                 velocityTracker.addPosition(down.uptimeMillis, down.position)
                 var axis = MiniDragAxis.Undecided
                 var consumedByChild = false // p. ej. el botón play recoge el tap
+                // Acumulado horizontal desde el inicio de ESTE gesto (parte de 0). Decide la
+                // dirección por su signo; nunca por la posición absoluta del toque.
+                var dragX = 0f
 
                 // Press diferido: la iluminación solo aparece si el dedo se mantiene sin superar el
                 // slop (se confirma como tap). Se cancela en cuanto empieza el arrastre.
@@ -173,8 +177,9 @@ fun MiniPlayer(
 
                         MiniDragAxis.Horizontal -> {
                             change.consume()
-                            val deltaX = change.positionChange().x
-                            scope.launch { offsetX.snapTo(offsetX.value + deltaX) }
+                            dragX += change.positionChange().x
+                            val target = dragX // la tarjeta sigue el acumulado (misma dirección)
+                            scope.launch { offsetX.snapTo(target) }
                         }
 
                         else -> {}
@@ -218,17 +223,20 @@ fun MiniPlayer(
 
                     MiniDragAxis.Horizontal -> {
                         val width = size.width.toFloat()
-                        val threshold = width * TrackCommitFraction
-                        val dx = offsetX.value
-                        when {
-                            // Derecha → siguiente; izquierda → anterior (preferencia explícita).
-                            dx >= threshold || velocity.x >= TrackFlingVelocity ->
-                                scope.launch { trackCrossSlide(offsetX, width, exitToLeft = false, reducedMotion, onNext) }
-
-                            dx <= -threshold || velocity.x <= -TrackFlingVelocity ->
-                                scope.launch { trackCrossSlide(offsetX, width, exitToLeft = true, reducedMotion, onPrevious) }
-
-                            else -> scope.launch {
+                        // Misma función de dirección que la carátula: una sola decisión que alimenta
+                        // animación y comando por igual.
+                        val direction = resolveTrackSwipe(
+                            netOffsetX = dragX,
+                            velocityX = velocity.x,
+                            commitDistancePx = width * TrackCommitFraction,
+                            flingVelocity = TrackFlingVelocity,
+                        )
+                        if (direction != null) {
+                            scope.launch {
+                                runTrackCrossSlide(direction, offsetX, width, reducedMotion, onNext, onPrevious)
+                            }
+                        } else {
+                            scope.launch {
                                 if (reducedMotion) {
                                     offsetX.snapTo(0f)
                                 } else {
@@ -285,26 +293,6 @@ fun MiniPlayer(
             MiniPlayPauseButton(isPlaying = uiState.isPlaying, onClick = onPlayPause)
         }
     }
-}
-
-/** El mini sale por un lado, se cambia la pista y el contenido nuevo entra por el opuesto. */
-private suspend fun trackCrossSlide(
-    offsetX: Animatable<Float, *>,
-    widthPx: Float,
-    exitToLeft: Boolean,
-    reducedMotion: Boolean,
-    onCommit: () -> Unit,
-) {
-    if (reducedMotion) {
-        onCommit()
-        offsetX.snapTo(0f)
-        return
-    }
-    val exit = if (exitToLeft) -widthPx else widthPx
-    offsetX.animateTo(exit, tween(180, easing = FastOutLinearInEasing)) // salir acelerando
-    onCommit()
-    offsetX.snapTo(-exit) // el contenido de la pista nueva entra desde el lado opuesto
-    offsetX.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
 }
 
 /**
