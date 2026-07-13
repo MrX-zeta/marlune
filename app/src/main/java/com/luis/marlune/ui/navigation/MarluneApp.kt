@@ -15,7 +15,6 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,7 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.ui.components.rememberHapticTick
@@ -129,16 +128,13 @@ private fun MarluneShell(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             Column {
+                // Tarjeta flotante: inset lateral + margen inferior para despegarla de la barra.
                 MiniPlayer(
                     uiState = playerState,
                     onExpand = onExpandPlayer,
                     onPlayPause = onMiniPlayPause,
                     artModifier = miniArtModifier,
-                )
-                // Hairline que separa el mini-player (elevado) de la barra (más oscura).
-                HorizontalDivider(
-                    thickness = Dp.Hairline,
-                    color = MarluneTheme.colors.divider,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                 )
                 MarluneBottomBar(selected = selected, onSelect = onSelect)
             }

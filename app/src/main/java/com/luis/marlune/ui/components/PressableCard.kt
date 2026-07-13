@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -31,6 +32,7 @@ fun PressableCard(
     modifier: Modifier = Modifier,
     shape: Shape = CardShape,
     color: Color = MarluneTheme.colors.surfaceElevated,
+    shadowElevation: Dp = 0.dp,
     content: @Composable () -> Unit,
 ) {
     val reducedMotion = LocalReducedMotion.current
@@ -50,6 +52,7 @@ fun PressableCard(
         },
         shape = shape,
         color = color,
+        shadowElevation = shadowElevation,
         interactionSource = interaction,
         content = content,
     )
