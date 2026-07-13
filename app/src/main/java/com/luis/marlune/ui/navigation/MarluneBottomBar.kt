@@ -5,6 +5,7 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -34,7 +35,8 @@ fun MarluneBottomBar(
 
     NavigationBar(
         modifier = modifier,
-        containerColor = MarluneTheme.colors.surfaceElevated,
+        // Superficie más oscura que el mini-player (#1F1C2B) para separar visualmente ambas capas.
+        containerColor = MaterialTheme.colorScheme.surface,
     ) {
         MarluneDestination.entries.forEach { destination ->
             val isSelected = destination == selected
