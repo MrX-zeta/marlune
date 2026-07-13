@@ -1,7 +1,12 @@
 package com.luis.marlune.ui.player.components
 
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -37,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -45,6 +51,13 @@ import com.luis.marlune.R
 import com.luis.marlune.domain.model.RepeatMode
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
+
+// Lenguaje de motion del play/pausa (compartido con el botón del mini-player):
+// morph un punto más visible y perceptible, sin cruzar a llamativo.
+private const val PlayMorphMillis = 210
+private const val PlayPulseMillis = 220
+private const val PlayMorphScale = 0.8f
+private const val PlayPressScale = 0.88f
 
 /**
  * Fila de transporte: aleatorio · anterior · play/pause · siguiente · repetir.
@@ -99,7 +112,11 @@ fun PlayerControls(
     }
 }
 
-/** Botón principal: círculo de acento, morph play↔pause (150 ms) y escala de press. */
+/**
+ * Botón principal: círculo de acento, morph play↔pause (~210 ms, visible) y press-feedback
+ * amplio (0.88 → 1) con spring de rigidez media y asentamiento calmado, sin rebote. Al pasar a
+ * "playing", el círculo da un pulso breve al acento vivo.
+ */
 @Composable
 private fun PlayPauseButton(
     isPlaying: Boolean,
@@ -110,10 +127,24 @@ private fun PlayPauseButton(
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed && !reducedMotion) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        targetValue = if (pressed && !reducedMotion) PlayPressScale else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
         label = "playPressScale",
     )
+
+    // Pulso de acento al iniciar reproducción: el círculo va a acento vivo y decae, calmado.
+    val accentVivid = MarluneTheme.colors.accentVivid
+    val basePrimary = MaterialTheme.colorScheme.primary
+    val pulse = remember { Animatable(0f) }
+    LaunchedEffect(isPlaying, reducedMotion) {
+        if (isPlaying && !reducedMotion) {
+            pulse.snapTo(1f)
+            pulse.animateTo(0f, tween(PlayPulseMillis))
+        } else {
+            pulse.snapTo(0f)
+        }
+    }
+    val circleColor = lerp(basePrimary, accentVivid, pulse.value)
 
     Surface(
         onClick = onClick,
@@ -124,14 +155,21 @@ private fun PlayPauseButton(
                 scaleY = scale
             },
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.primary, // acento (sigue el color dinámico)
+        color = circleColor, // acento (sigue el color dinámico) + pulso
         contentColor = MaterialTheme.colorScheme.onPrimary,
         interactionSource = interaction,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Crossfade(
+            AnimatedContent(
                 targetState = isPlaying,
-                animationSpec = if (reducedMotion) snap() else tween(150),
+                transitionSpec = {
+                    if (reducedMotion) {
+                        fadeIn(snap()) togetherWith fadeOut(snap())
+                    } else {
+                        (fadeIn(tween(PlayMorphMillis)) + scaleIn(tween(PlayMorphMillis), initialScale = PlayMorphScale)) togetherWith
+                            (fadeOut(tween(PlayMorphMillis)) + scaleOut(tween(PlayMorphMillis), targetScale = PlayMorphScale))
+                    }
+                },
                 label = "playIconMorph",
             ) { playing ->
                 Icon(

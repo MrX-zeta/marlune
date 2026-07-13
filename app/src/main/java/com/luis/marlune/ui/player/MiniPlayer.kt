@@ -53,7 +53,11 @@ import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
-private const val PlayMorphMillis = 150
+// Lenguaje de motion del play/pausa (idéntico al botón grande de Now Playing).
+private const val PlayMorphMillis = 210
+private const val PlayPulseMillis = 220
+private const val PlayMorphScale = 0.8f
+private const val PlayPressScale = 0.88f
 
 // Recorrido (corto) para llegar al progreso 1 y magnitud del "levantamiento" acoplado.
 private val ExpandDragDistance = 100.dp
@@ -262,10 +266,9 @@ private suspend fun trackCrossSlide(
 
 /**
  * Botón play/pausa del mini-player con el MISMO lenguaje de motion que el botón grande:
- *  - Morph de icono con crossfade + ligero cambio de escala, 150 ms.
- *  - Press-feedback: baja a 0.94 al presionar y vuelve con spring (mismos tokens que el grande).
- *  - Pulso brevísimo de acento (→ acento vivo) al pasar a "playing", que decae en 150 ms sin
- *    rebote. Micro; es acción de alta frecuencia.
+ *  - Morph de icono play↔pause con crossfade + escala, ~210 ms (visible, no llamativo).
+ *  - Press-feedback amplio (0.88 → 1) con spring de rigidez media y asentamiento calmado, sin rebote.
+ *  - Pulso de acento (→ acento vivo) al pasar a "playing", que decae en ~220 ms sin rebote.
  */
 @Composable
 private fun MiniPlayPauseButton(
@@ -278,8 +281,8 @@ private fun MiniPlayPauseButton(
     val pressed by interaction.collectIsPressedAsState()
 
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed && !reducedMotion) 0.94f else 1f,
-        animationSpec = spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessMedium),
+        targetValue = if (pressed && !reducedMotion) PlayPressScale else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioNoBouncy, stiffness = Spring.StiffnessMedium),
         label = "miniPlayPressScale",
     )
 
@@ -290,7 +293,7 @@ private fun MiniPlayPauseButton(
     LaunchedEffect(isPlaying, reducedMotion) {
         if (isPlaying && !reducedMotion) {
             pulse.snapTo(1f)
-            pulse.animateTo(0f, tween(PlayMorphMillis))
+            pulse.animateTo(0f, tween(PlayPulseMillis))
         } else {
             pulse.snapTo(0f)
         }
@@ -311,8 +314,8 @@ private fun MiniPlayPauseButton(
                 if (reducedMotion) {
                     fadeIn(snap()) togetherWith fadeOut(snap())
                 } else {
-                    (fadeIn(tween(PlayMorphMillis)) + scaleIn(tween(PlayMorphMillis), initialScale = 0.85f)) togetherWith
-                        (fadeOut(tween(PlayMorphMillis)) + scaleOut(tween(PlayMorphMillis), targetScale = 0.85f))
+                    (fadeIn(tween(PlayMorphMillis)) + scaleIn(tween(PlayMorphMillis), initialScale = PlayMorphScale)) togetherWith
+                        (fadeOut(tween(PlayMorphMillis)) + scaleOut(tween(PlayMorphMillis), targetScale = PlayMorphScale))
                 }
             },
             label = "miniPlayIcon",
