@@ -64,6 +64,7 @@ fun Marea(
     trackColor: Color = MarluneTheme.colors.accentMuted,
     playheadColor: Color = waveColor,
     backgroundColor: Color = MaterialTheme.colorScheme.background,
+    amplitudeScale: Float = 1f,
 ) {
     val reducedMotion = LocalReducedMotion.current
     val clampedProgress = progress.coerceIn(0f, 1f)
@@ -86,7 +87,9 @@ fun Marea(
     }
 
     // La amplitud calma a 0 al pausar y regresa al reproducir (el corazón emocional).
-    val targetAmplitude = if (isPlaying && !reducedMotion) MareaAmplitudeDp else 0f
+    // `amplitudeScale` la atenúa para ecos de la firma (p. ej. la card "Continuar escuchando").
+    val maxAmplitude = MareaAmplitudeDp * amplitudeScale.coerceIn(0f, 1f)
+    val targetAmplitude = if (isPlaying && !reducedMotion) maxAmplitude else 0f
     val amplitudeDp by animateFloatAsState(
         targetValue = targetAmplitude,
         animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
