@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import com.luis.marlune.ui.home.HomeRoute
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 
@@ -25,8 +26,8 @@ import com.luis.marlune.ui.theme.MarluneTheme
  *
  * El cambio de pestaña es un intercambio de contenido instantáneo (fade 150 ms), sin
  * deslizamiento de página —es la acción más frecuente—. La selección sobrevive a rotaciones
- * (`rememberSaveable`). Los paneles son marcadores de posición: cada pantalla real
- * (Inicio/Biblioteca/Buscar) se construye en su propia tarea dentro de `ui/<pantalla>/`.
+ * (`rememberSaveable`). Inicio ya es su pantalla real; Biblioteca y Buscar siguen como
+ * marcadores hasta su propia tarea, cada una en `ui/<pantalla>/`.
  */
 @Composable
 fun MarluneApp(modifier: Modifier = Modifier) {
@@ -48,16 +49,27 @@ fun MarluneApp(modifier: Modifier = Modifier) {
             modifier = Modifier.padding(innerPadding),
             label = "tabContent",
         ) { destination ->
-            // Marcador de posición hasta que exista la pantalla real de cada pestaña.
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(destination.labelRes),
-                    style = MarluneTheme.typography.headlineMedium,
-                    color = MarluneTheme.colors.textPrimary,
+            when (destination) {
+                MarluneDestination.HOME -> HomeRoute(
+                    // La navegación real (abrir reproductor / secciones) llega en una tarea posterior.
+                    onOpenPlayer = {},
+                    onPlayTrack = {},
+                    onShortcutClick = {},
                 )
+
+                else -> {
+                    // Marcador de posición hasta que exista la pantalla real de la pestaña.
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = stringResource(destination.labelRes),
+                            style = MarluneTheme.typography.headlineMedium,
+                            color = MarluneTheme.colors.textPrimary,
+                        )
+                    }
+                }
             }
         }
     }
