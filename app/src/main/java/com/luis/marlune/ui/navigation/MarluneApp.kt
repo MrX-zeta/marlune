@@ -1,8 +1,18 @@
 package com.luis.marlune.ui.navigation
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
@@ -13,31 +23,118 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.luis.marlune.ui.components.rememberHapticTick
 import com.luis.marlune.ui.home.HomeRoute
 import com.luis.marlune.ui.library.LibraryRoute
+import com.luis.marlune.ui.player.MiniPlayer
+import com.luis.marlune.ui.player.PlayerEvent
+import com.luis.marlune.ui.player.PlayerScreen
+import com.luis.marlune.ui.player.PlayerViewModel
 import com.luis.marlune.ui.search.SearchRoute
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 
+private const val ALBUM_ART_KEY = "album-art"
+
 /**
- * Andamiaje raíz de Marlune: barra inferior de 3 pestañas y contenedor de contenido.
+ * Andamiaje raíz de Marlune.
  *
- * El cambio de pestaña es un intercambio de contenido instantáneo (fade 150 ms), sin
- * deslizamiento de página —es la acción más frecuente—. La selección sobrevive a rotaciones
- * (`rememberSaveable`). Las tres pestañas (Inicio, Biblioteca, Buscar) ya son sus pantallas reales.
+ * - Barra inferior: cambio de pestaña = swap de contenido instantáneo (fade 150 ms), sin slide de
+ *   página; solo el icono activo reacciona (ver [MarluneBottomBar]).
+ * - Mini-player ↔ reproductor completo: transición de elemento compartido sobre la carátula
+ *   (`SharedTransitionLayout` + `AnimatedContent`). La carátula viaja; los controles alrededor
+ *   hacen fade. Es el gran gesto espacial —aquí se gasta el presupuesto de motion (≤300 ms).
+ * - Haptics consolidados: un único `tick` ligero en play/pausa y cambio de pista.
+ *
+ * Un solo [PlayerViewModel] alimenta mini y completo, así ambos muestran la misma pista.
  */
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun MarluneApp(modifier: Modifier = Modifier) {
-    var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
     val reducedMotion = LocalReducedMotion.current
+    val playerViewModel: PlayerViewModel = viewModel()
+    val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
 
+    var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
+    var playerExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // Haptics en un solo punto: solo play/pausa y cambio de pista, nunca en scroll.
+    val hapticTick = rememberHapticTick()
+    val dispatchPlayer: (PlayerEvent) -> Unit = { event ->
+        if (event is PlayerEvent.PlayPause || event is PlayerEvent.Next || event is PlayerEvent.Previous) {
+            hapticTick()
+        }
+        playerViewModel.onEvent(event)
+    }
+
+    val transitionMs = if (reducedMotion) 0 else 280
+
+    SharedTransitionLayout(modifier = modifier.fillMaxSize()) {
+        AnimatedContent(
+            targetState = playerExpanded,
+            transitionSpec = {
+                val spec = tween<Float>(transitionMs)
+                fadeIn(spec) togetherWith fadeOut(spec)
+            },
+            label = "playerExpand",
+        ) { expanded ->
+            // Modificador de elemento compartido para la carátula, con la misma clave en ambos
+            // estados; los límites se interpolan en ≤300 ms.
+            val artModifier = with(this@SharedTransitionLayout) {
+                Modifier.sharedElement(
+                    sharedContentState = rememberSharedContentState(ALBUM_ART_KEY),
+                    animatedVisibilityScope = this@AnimatedContent,
+                    boundsTransform = { _, _ -> tween(transitionMs, easing = FastOutSlowInEasing) },
+                )
+            }
+
+            if (expanded) {
+                PlayerScreen(
+                    uiState = playerState,
+                    onEvent = dispatchPlayer,
+                    onMinimize = { playerExpanded = false },
+                    artModifier = artModifier,
+                )
+            } else {
+                MarluneShell(
+                    selected = selected,
+                    onSelect = { selected = it },
+                    reducedMotion = reducedMotion,
+                    playerState = playerState,
+                    onExpandPlayer = { playerExpanded = true },
+                    onMiniPlayPause = { dispatchPlayer(PlayerEvent.PlayPause) },
+                    miniArtModifier = artModifier,
+                )
+            }
+        }
+    }
+}
+
+/** Estado colapsado: pestañas + mini-player sobre la barra inferior. */
+@Composable
+private fun MarluneShell(
+    selected: MarluneDestination,
+    onSelect: (MarluneDestination) -> Unit,
+    reducedMotion: Boolean,
+    playerState: com.luis.marlune.ui.player.PlayerUiState,
+    onExpandPlayer: () -> Unit,
+    onMiniPlayPause: () -> Unit,
+    miniArtModifier: Modifier,
+) {
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         bottomBar = {
-            MarluneBottomBar(
-                selected = selected,
-                onSelect = { selected = it },
-            )
+            Column {
+                MiniPlayer(
+                    uiState = playerState,
+                    onExpand = onExpandPlayer,
+                    onPlayPause = onMiniPlayPause,
+                    artModifier = miniArtModifier,
+                )
+                MarluneBottomBar(selected = selected, onSelect = onSelect)
+            }
         },
     ) { innerPadding ->
         Crossfade(
@@ -48,9 +145,8 @@ fun MarluneApp(modifier: Modifier = Modifier) {
         ) { destination ->
             when (destination) {
                 MarluneDestination.HOME -> HomeRoute(
-                    // La navegación real (abrir reproductor / secciones) llega en una tarea posterior.
-                    onOpenPlayer = {},
-                    onPlayTrack = {},
+                    onOpenPlayer = onExpandPlayer,
+                    onPlayTrack = { onExpandPlayer() },
                     onShortcutClick = {},
                 )
 
@@ -59,7 +155,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                 )
 
                 MarluneDestination.SEARCH -> SearchRoute(
-                    onOpenTrack = {},
+                    onOpenTrack = { onExpandPlayer() },
                 )
             }
         }
