@@ -26,6 +26,7 @@ class PlayerViewModel : ViewModel() {
 
     private var tickerJob: Job? = null
     private var trackChangeCounter = 0
+    private var currentIndex = 0 // índice en la cola; su variación define la dirección canónica
 
     fun onEvent(event: PlayerEvent) {
         when (event) {
@@ -44,17 +45,21 @@ class PlayerViewModel : ViewModel() {
         if (playing) startTicker() else tickerJob?.cancel()
     }
 
+    private fun skipToNext() = changeTrackTo(currentIndex + 1)
+
+    private fun skipToPrevious() = changeTrackTo(currentIndex - 1)
+
     /**
-     * Cambio de pista. Registra la dirección en [PlayerUiState.trackTransition] —única fuente de
-     * la que la UI deriva la dirección de la animación—; TODOS los orígenes (swipe, botones,
-     * auto-avance, notificación) pasan por aquí. El `MediaController.seekToNext/Previous` real
-     * llegará en `playback/`; de momento reinicia la posición.
+     * Cambia de pista a [newIndex] en la cola. La dirección CANÓNICA sale de comparar el índice
+     * nuevo con el anterior (avanzó = siguiente; retrocedió = anterior) y se registra en
+     * [PlayerUiState.trackTransition] —única fuente de la que la UI deriva la dirección de la
+     * animación—. TODOS los orígenes (botones, swipe, auto-avance, notificación/Bluetooth) pasan
+     * por aquí. El `MediaController` real llegará en `playback/`; de momento reinicia la posición.
      */
-    private fun skipToNext() = changeTrack(forward = true)
-
-    private fun skipToPrevious() = changeTrack(forward = false)
-
-    private fun changeTrack(forward: Boolean) {
+    private fun changeTrackTo(newIndex: Int) {
+        if (newIndex == currentIndex) return
+        val forward = newIndex > currentIndex
+        currentIndex = newIndex
         trackChangeCounter++
         _uiState.update {
             it.copy(
