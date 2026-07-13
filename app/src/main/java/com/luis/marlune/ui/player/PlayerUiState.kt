@@ -5,6 +5,15 @@ import androidx.compose.ui.graphics.ImageBitmap
 import com.luis.marlune.domain.model.RepeatMode
 
 /**
+ * Señal del ÚLTIMO cambio de pista, leída del player. [id] incrementa en cada cambio (para
+ * detectarlo una sola vez) y [forward] indica si fue "siguiente" (true) o "anterior" (false).
+ * Es la ÚNICA fuente de la que deriva la dirección de la transición de carátula, sin importar
+ * quién la disparó (swipe, botón, notificación, auto-avance).
+ */
+@Immutable
+data class TrackTransition(val id: Int = 0, val forward: Boolean = true)
+
+/**
  * Estado inmutable de la pantalla del Reproductor.
  *
  * `source` es el origen LOCAL de la cola (p. ej. "Tu biblioteca", una lista o un álbum);
@@ -23,6 +32,7 @@ data class PlayerUiState(
     val repeatMode: RepeatMode,
     val isLiked: Boolean,
     val artwork: ImageBitmap? = null,
+    val trackTransition: TrackTransition = TrackTransition(),
 ) {
     /** Avance en [0, 1] para la marea. */
     val progress: Float
@@ -52,4 +62,7 @@ sealed interface PlayerEvent {
     data object ToggleShuffle : PlayerEvent
     data object ToggleRepeat : PlayerEvent
     data object ToggleLike : PlayerEvent
+
+    /** Salto a una posición (ms). El seekTo real irá por el MediaController/PlaybackRepository. */
+    data class SeekTo(val positionMs: Long) : PlayerEvent
 }

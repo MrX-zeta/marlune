@@ -14,12 +14,10 @@ import kotlin.math.abs
 enum class TrackSwipeDirection { NEXT, PREVIOUS }
 
 /**
- * ÚNICA fuente de verdad de la dirección. Combina el desplazamiento horizontal NETO del gesto
- * ([netOffsetX], desde el inicio del propio gesto) y la velocidad del fling ([velocityX]) con la
- * MISMA convención de signo (positivo = derecha = siguiente). Devuelve `null` si no se confirma
- * (no se superó ni la distancia ni la velocidad).
- *
- * El resultado alimenta tanto la animación como el comando; nunca se decide dos veces.
+ * A partir del gesto, decide qué COMANDO pedir (siguiente/anterior) combinando el desplazamiento
+ * horizontal neto y la velocidad del fling con la misma convención de signo. `null` si no se
+ * confirma. OJO: esto elige el comando del swipe; NO decide la dirección de la animación (esa sale
+ * del cambio de pista, ver [runTrackSlideAnimation]).
  */
 fun resolveTrackSwipe(
     netOffsetX: Float,
@@ -29,35 +27,32 @@ fun resolveTrackSwipe(
 ): TrackSwipeDirection? {
     val committed = abs(netOffsetX) >= commitDistancePx || abs(velocityX) >= flingVelocity
     if (!committed) return null
-    // Una sola cantidad con signo: el desplazamiento neto manda; si es exactamente 0, el fling.
     val directional = if (netOffsetX != 0f) netOffsetX else velocityX
     return if (directional >= 0f) TrackSwipeDirection.NEXT else TrackSwipeDirection.PREVIOUS
 }
 
 /**
- * Ejecuta el cross-slide y el comando derivando AMBOS de la misma [direction]: la carátula/tarjeta
- * sale hacia el lado del gesto y la nueva entra por el opuesto, e invoca skipToNext/skipToPrevious
- * (que van por el MediaController). Con movimiento reducido salta sin animar. Techo de 300 ms.
+ * Animación de confirmación del cambio de pista: la carátula sale por un lado y la nueva entra
+ * por el opuesto. La DIRECCIÓN sale de [forward] —que deriva del cambio de pista real leído del
+ * player— con un ÚNICO mapeo aquí (siguiente = sale por la derecha; anterior = por la izquierda).
+ *
+ * NO ejecuta ningún comando: el comando (skipToNext/skipToPrevious) es solo el disparador; esta
+ * función solo anima. Así todos los orígenes (swipe, botones, notificación, auto-avance) animan
+ * en la misma dirección para "siguiente" y la misma para "anterior". Respeta el movimiento
+ * reducido y el techo de 300 ms.
  */
-suspend fun runTrackCrossSlide(
-    direction: TrackSwipeDirection,
+suspend fun runTrackSlideAnimation(
+    forward: Boolean,
     offsetX: Animatable<Float, *>,
     widthPx: Float,
     reducedMotion: Boolean,
-    onNext: () -> Unit,
-    onPrevious: () -> Unit,
 ) {
-    // Derecha (NEXT) sale por la derecha (+); izquierda (PREVIOUS) por la izquierda (−).
-    val exitSign = if (direction == TrackSwipeDirection.NEXT) 1f else -1f
-    val command = if (direction == TrackSwipeDirection.NEXT) onNext else onPrevious
-
+    val exitSign = if (forward) 1f else -1f // ÚNICO punto que mapea dirección → animación
     if (reducedMotion) {
-        command()
         offsetX.snapTo(0f)
         return
     }
     offsetX.animateTo(exitSign * widthPx, tween(180, easing = FastOutLinearInEasing)) // sale acelerando
-    command()
     offsetX.snapTo(-exitSign * widthPx) // la pista nueva entra desde el lado opuesto
     offsetX.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
 }

@@ -34,13 +34,16 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.res.stringResource
@@ -49,8 +52,9 @@ import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
 import com.luis.marlune.ui.components.PressableCard
 import com.luis.marlune.ui.home.components.TrackThumbnail
+import com.luis.marlune.ui.player.components.TrackSwipeDirection
 import com.luis.marlune.ui.player.components.resolveTrackSwipe
-import com.luis.marlune.ui.player.components.runTrackCrossSlide
+import com.luis.marlune.ui.player.components.runTrackSlideAnimation
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.delay
@@ -103,6 +107,20 @@ fun MiniPlayer(
     val offsetX = remember { Animatable(0f) } // desplazamiento del cambio de pista horizontal
     // State layer de la card, controlado por el detector: solo se ilumina en tap real, no al deslizar.
     val interactionSource = remember { MutableInteractionSource() }
+    var cardWidthPx by remember { mutableStateOf(0f) }
+
+    // Misma fuente única que Now Playing: la dirección de la transición sale del cambio de pista
+    // del player (no de quién lo disparó). El swipe solo pide el comando.
+    var lastHandledTransition by remember { mutableStateOf(uiState.trackTransition.id) }
+    LaunchedEffect(uiState.trackTransition.id) {
+        val transition = uiState.trackTransition
+        if (transition.id != lastHandledTransition) {
+            lastHandledTransition = transition.id
+            if (cardWidthPx > 0f) {
+                runTrackSlideAnimation(transition.forward, offsetX, cardWidthPx, reducedMotion)
+            }
+        }
+    }
 
     val expandGesture = Modifier
         .graphicsLayer {
@@ -223,20 +241,14 @@ fun MiniPlayer(
 
                     MiniDragAxis.Horizontal -> {
                         val width = size.width.toFloat()
-                        // Misma función de dirección que la carátula: una sola decisión que alimenta
-                        // animación y comando por igual.
-                        val direction = resolveTrackSwipe(
-                            netOffsetX = dragX,
-                            velocityX = velocity.x,
-                            commitDistancePx = width * TrackCommitFraction,
-                            flingVelocity = TrackFlingVelocity,
-                        )
-                        if (direction != null) {
-                            scope.launch {
-                                runTrackCrossSlide(direction, offsetX, width, reducedMotion, onNext, onPrevious)
-                            }
-                        } else {
-                            scope.launch {
+                        // Solo elige QUÉ comando pedir; la animación de confirmación la corre el
+                        // observador de trackTransition (fuente única de dirección).
+                        when (
+                            resolveTrackSwipe(dragX, velocity.x, width * TrackCommitFraction, TrackFlingVelocity)
+                        ) {
+                            TrackSwipeDirection.NEXT -> onNext()
+                            TrackSwipeDirection.PREVIOUS -> onPrevious()
+                            null -> scope.launch {
                                 if (reducedMotion) {
                                     offsetX.snapTo(0f)
                                 } else {
@@ -253,7 +265,10 @@ fun MiniPlayer(
 
     PressableCard(
         onClick = null, // el tap lo resuelve el detector unificado (para distinguir tap de swipe)
-        modifier = modifier.then(expandGesture).fillMaxWidth(),
+        modifier = modifier
+            .then(expandGesture)
+            .fillMaxWidth()
+            .onSizeChanged { cardWidthPx = it.width.toFloat() },
         color = MarluneTheme.colors.surfaceElevated,
         shadowElevation = 6.dp, // flota sobre la barra
         interactionSource = interactionSource,

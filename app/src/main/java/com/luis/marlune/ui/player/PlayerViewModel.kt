@@ -25,15 +25,17 @@ class PlayerViewModel : ViewModel() {
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     private var tickerJob: Job? = null
+    private var trackChangeCounter = 0
 
     fun onEvent(event: PlayerEvent) {
         when (event) {
             PlayerEvent.PlayPause -> setPlaying(!_uiState.value.isPlaying)
-            PlayerEvent.Next -> skipTo(0L)
-            PlayerEvent.Previous -> skipTo(0L)
+            PlayerEvent.Next -> skipToNext()
+            PlayerEvent.Previous -> skipToPrevious()
             PlayerEvent.ToggleShuffle -> _uiState.update { it.copy(isShuffleOn = !it.isShuffleOn) }
             PlayerEvent.ToggleRepeat -> _uiState.update { it.copy(repeatMode = it.repeatMode.next()) }
             PlayerEvent.ToggleLike -> _uiState.update { it.copy(isLiked = !it.isLiked) }
+            is PlayerEvent.SeekTo -> seekTo(event.positionMs)
         }
     }
 
@@ -42,8 +44,28 @@ class PlayerViewModel : ViewModel() {
         if (playing) startTicker() else tickerJob?.cancel()
     }
 
-    /** Placeholder de cambio de pista: reinicia la posición. La cola real vive en `playback/`. */
-    private fun skipTo(positionMs: Long) {
+    /**
+     * Cambio de pista. Registra la dirección en [PlayerUiState.trackTransition] —única fuente de
+     * la que la UI deriva la dirección de la animación—; TODOS los orígenes (swipe, botones,
+     * auto-avance, notificación) pasan por aquí. El `MediaController.seekToNext/Previous` real
+     * llegará en `playback/`; de momento reinicia la posición.
+     */
+    private fun skipToNext() = changeTrack(forward = true)
+
+    private fun skipToPrevious() = changeTrack(forward = false)
+
+    private fun changeTrack(forward: Boolean) {
+        trackChangeCounter++
+        _uiState.update {
+            it.copy(
+                positionMs = 0L,
+                trackTransition = TrackTransition(id = trackChangeCounter, forward = forward),
+            )
+        }
+    }
+
+    /** Salto de posición dentro de la pista. El `MediaController.seekTo` real irá en `playback/`. */
+    private fun seekTo(positionMs: Long) {
         _uiState.update { it.copy(positionMs = positionMs.coerceIn(0L, it.durationMs)) }
     }
 
@@ -57,8 +79,8 @@ class PlayerViewModel : ViewModel() {
                 val next = (current.positionMs + TICK_MS).coerceAtMost(current.durationMs)
                 _uiState.update { it.copy(positionMs = next) }
                 if (next >= current.durationMs) {
-                    setPlaying(false)
-                    break
+                    // Auto-avance al terminar: mismo camino que el botón/swipe → misma dirección.
+                    skipToNext()
                 }
             }
         }

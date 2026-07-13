@@ -146,20 +146,16 @@ fun AlbumArt(
                         val velocity = velocityTracker.calculateVelocity()
                         when (axis) {
                             DragAxis.Horizontal -> {
-                                // Una sola decisión de dirección (offset neto + fling) que alimenta
-                                // tanto la animación como el comando.
-                                val direction = resolveTrackSwipe(
-                                    netOffsetX = dragX,
-                                    velocityX = velocity.x,
-                                    commitDistancePx = horizontalThreshold,
-                                    flingVelocity = HorizontalFlingVelocity,
-                                )
-                                if (direction != null) {
-                                    scope.launch {
-                                        runTrackCrossSlide(direction, offsetX, widthPx, reducedMotion, onNext, onPrevious)
-                                    }
-                                } else {
-                                    scope.launch { offsetX.animateTo(0f, settleSpring()) }
+                                // El swipe solo elige QUÉ comando pedir (siguiente/anterior) según
+                                // el offset neto + fling. La dirección de la animación de
+                                // confirmación NO se decide aquí: la corre el observador de
+                                // `trackTransition` (fuente única), derivándola del cambio de pista.
+                                when (
+                                    resolveTrackSwipe(dragX, velocity.x, horizontalThreshold, HorizontalFlingVelocity)
+                                ) {
+                                    TrackSwipeDirection.NEXT -> onNext()
+                                    TrackSwipeDirection.PREVIOUS -> onPrevious()
+                                    null -> scope.launch { offsetX.animateTo(0f, settleSpring()) }
                                 }
                             }
 

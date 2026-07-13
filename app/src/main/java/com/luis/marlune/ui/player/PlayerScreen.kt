@@ -20,8 +20,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
@@ -44,8 +47,7 @@ import com.luis.marlune.ui.components.Marea
 import com.luis.marlune.ui.player.components.AlbumArt
 import com.luis.marlune.ui.player.components.LikeButton
 import com.luis.marlune.ui.player.components.PlayerControls
-import com.luis.marlune.ui.player.components.TrackSwipeDirection
-import com.luis.marlune.ui.player.components.runTrackCrossSlide
+import com.luis.marlune.ui.player.components.runTrackSlideAnimation
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -89,19 +91,22 @@ fun PlayerScreen(
     // para que ambos acompañen el dedo con el mismo offset.
     val trackOffset = remember { Animatable(0f) }
 
-    // Anterior/siguiente reutilizan EXACTAMENTE la misma ruta que el swipe: el cross-slide
-    // (mismo `trackOffset` y `runTrackCrossSlide`) y el mismo comando (`onEvent`). Ancho de la
-    // carátula = ancho del contenido (padding horizontal de 24 dp a cada lado).
+    // Ancho de la carátula (= ancho del contenido con padding horizontal de 24 dp a cada lado).
     val artWidthPx = with(density) { (configuration.screenWidthDp.dp - 48.dp).toPx() }
-    val skipTrack: (TrackSwipeDirection) -> Unit = { direction ->
-        scope.launch {
-            runTrackCrossSlide(
-                direction = direction,
+
+    // ÚNICA fuente de la dirección de la transición de carátula: el cambio de pista del player.
+    // Swipe, botones y auto-avance solo piden el cambio; aquí se anima una vez por cambio,
+    // derivando la dirección de `forward`.
+    var lastHandledTransition by remember { mutableStateOf(uiState.trackTransition.id) }
+    LaunchedEffect(uiState.trackTransition.id) {
+        val transition = uiState.trackTransition
+        if (transition.id != lastHandledTransition) {
+            lastHandledTransition = transition.id
+            runTrackSlideAnimation(
+                forward = transition.forward,
                 offsetX = trackOffset,
                 widthPx = artWidthPx,
                 reducedMotion = reducedMotion,
-                onNext = { onEvent(PlayerEvent.Next) },
-                onPrevious = { onEvent(PlayerEvent.Previous) },
             )
         }
     }
@@ -220,9 +225,10 @@ fun PlayerScreen(
                 isShuffleOn = uiState.isShuffleOn,
                 repeatMode = uiState.repeatMode,
                 onPlayPause = { onEvent(PlayerEvent.PlayPause) },
-                // Mismo camino que el swipe: cross-slide + skipToPrevious/skipToNext.
-                onPrevious = { skipTrack(TrackSwipeDirection.PREVIOUS) },
-                onNext = { skipTrack(TrackSwipeDirection.NEXT) },
+                // Solo piden el cambio de pista; la dirección de la animación la deriva el
+                // observador de `trackTransition` (fuente única), igual que el swipe.
+                onPrevious = { onEvent(PlayerEvent.Previous) },
+                onNext = { onEvent(PlayerEvent.Next) },
                 onToggleShuffle = { onEvent(PlayerEvent.ToggleShuffle) },
                 onToggleRepeat = { onEvent(PlayerEvent.ToggleRepeat) },
                 modifier = chrome,
