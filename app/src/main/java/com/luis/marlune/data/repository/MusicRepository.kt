@@ -5,9 +5,11 @@ import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
 import com.luis.marlune.domain.model.Song
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.util.Locale
@@ -32,8 +34,10 @@ class MusicRepository(
 ) {
 
     /**
-     * Biblioteca completa, auto-refrescada por MediaStore. Compartida entre todos los consumidores
-     * (un único observer). Empieza en [LibraryState.Loading] hasta la primera consulta.
+     * Biblioteca completa, auto-refrescada por MediaStore. Flow CALIENTE y cacheado (una sola
+     * consulta en IO, compartida por todos): `WhileSubscribed(5000)` mantiene el valor durante la
+     * navegación, de modo que la query no se repite al re-suscribirse; el `ContentObserver`
+     * actualiza esta caché. Empieza en [LibraryState.Loading] hasta la primera consulta.
      */
     val library: StateFlow<LibraryState> = source.observeSongs()
         .map<List<Song>, LibraryState> { LibraryState.Content(it) }
@@ -44,11 +48,25 @@ class MusicRepository(
         (state as? LibraryState.Content)?.songs.orEmpty()
     }
 
-    val albums: Flow<List<Album>> = songs.map { list -> deriveAlbums(list) }
+    /**
+     * Álbumes/artistas derivados de la biblioteca cacheada: la agrupación (`groupBy`) corre UNA vez
+     * por cambio de biblioteca, en `Dispatchers.Default` ([flowOn]), y el resultado queda cacheado
+     * (`StateFlow`) para que ningún consumidor re-agrupe al re-suscribirse. Compartidos por todos.
+     */
+    val albums: StateFlow<List<Album>> = songs
+        .map { list -> deriveAlbums(list) }
+        .flowOn(Dispatchers.Default)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val artists: Flow<List<Artist>> = songs.map { list -> deriveArtists(list) }
+    val artists: StateFlow<List<Artist>> = songs
+        .map { list -> deriveArtists(list) }
+        .flowOn(Dispatchers.Default)
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    /** Búsqueda LOCAL por título, álbum, artista o género (contains, sin distinguir mayúsculas). */
+    /**
+     * Búsqueda LOCAL por título, álbum, artista o género (contains, sin distinguir mayúsculas).
+     * El filtrado corre en `Dispatchers.Default` para no bloquear la UI en bibliotecas grandes.
+     */
     fun searchSongs(query: String): Flow<List<Song>> {
         val term = query.trim().lowercase(Locale.getDefault())
         return songs.map { list ->
@@ -62,7 +80,7 @@ class MusicRepository(
                         song.genre?.lowercase(Locale.getDefault())?.contains(term) == true
                 }
             }
-        }
+        }.flowOn(Dispatchers.Default)
     }
 
     /** Refresco manual inmediato (re-consulta MediaStore). */
