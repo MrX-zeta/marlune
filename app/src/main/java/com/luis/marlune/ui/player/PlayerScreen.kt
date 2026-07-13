@@ -44,6 +44,8 @@ import com.luis.marlune.ui.components.Marea
 import com.luis.marlune.ui.player.components.AlbumArt
 import com.luis.marlune.ui.player.components.LikeButton
 import com.luis.marlune.ui.player.components.PlayerControls
+import com.luis.marlune.ui.player.components.TrackSwipeDirection
+import com.luis.marlune.ui.player.components.runTrackCrossSlide
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -86,6 +88,23 @@ fun PlayerScreen(
     // Desplazamiento horizontal del cambio de pista, compartido por la carátula y el título
     // para que ambos acompañen el dedo con el mismo offset.
     val trackOffset = remember { Animatable(0f) }
+
+    // Anterior/siguiente reutilizan EXACTAMENTE la misma ruta que el swipe: el cross-slide
+    // (mismo `trackOffset` y `runTrackCrossSlide`) y el mismo comando (`onEvent`). Ancho de la
+    // carátula = ancho del contenido (padding horizontal de 24 dp a cada lado).
+    val artWidthPx = with(density) { (configuration.screenWidthDp.dp - 48.dp).toPx() }
+    val skipTrack: (TrackSwipeDirection) -> Unit = { direction ->
+        scope.launch {
+            runTrackCrossSlide(
+                direction = direction,
+                offsetX = trackOffset,
+                widthPx = artWidthPx,
+                reducedMotion = reducedMotion,
+                onNext = { onEvent(PlayerEvent.Next) },
+                onPrevious = { onEvent(PlayerEvent.Previous) },
+            )
+        }
+    }
 
     // Colapso dirigido hacia el mini-player: 0 = completo, 1 = colapsado. La vista sigue el
     // dedo (Animatable) y hace snap al soltar.
@@ -179,9 +198,17 @@ fun PlayerScreen(
 
             Spacer(Modifier.height(20.dp))
 
-            // Marea + tiempos: chrome (se atenúan/difuminan con el colapso).
+            // Marea + tiempos: chrome (se atenúan/difuminan con el colapso). La marea acepta
+            // seek (arrastrar/tap); el seekTo va por el evento hacia el ViewModel/MediaController.
             Column(modifier = chrome) {
-                Marea(progress = uiState.progress, isPlaying = uiState.isPlaying)
+                Marea(
+                    progress = uiState.progress,
+                    isPlaying = uiState.isPlaying,
+                    durationMs = uiState.durationMs,
+                    onSeek = { fraction ->
+                        onEvent(PlayerEvent.SeekTo((fraction * uiState.durationMs).toLong()))
+                    },
+                )
                 TimeRow(positionMs = uiState.positionMs, durationMs = uiState.durationMs)
             }
 
@@ -193,8 +220,9 @@ fun PlayerScreen(
                 isShuffleOn = uiState.isShuffleOn,
                 repeatMode = uiState.repeatMode,
                 onPlayPause = { onEvent(PlayerEvent.PlayPause) },
-                onPrevious = { onEvent(PlayerEvent.Previous) },
-                onNext = { onEvent(PlayerEvent.Next) },
+                // Mismo camino que el swipe: cross-slide + skipToPrevious/skipToNext.
+                onPrevious = { skipTrack(TrackSwipeDirection.PREVIOUS) },
+                onNext = { skipTrack(TrackSwipeDirection.NEXT) },
                 onToggleShuffle = { onEvent(PlayerEvent.ToggleShuffle) },
                 onToggleRepeat = { onEvent(PlayerEvent.ToggleRepeat) },
                 modifier = chrome,
