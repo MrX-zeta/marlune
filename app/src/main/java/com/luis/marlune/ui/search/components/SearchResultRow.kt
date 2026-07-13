@@ -17,18 +17,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.luis.marlune.domain.model.Track
+import com.luis.marlune.domain.model.Song
 import com.luis.marlune.ui.home.components.TrackThumbnail
 import com.luis.marlune.ui.theme.MarluneTheme
 import com.luis.marlune.ui.theme.placeholderAccentFor
 
 /**
- * Fila de resultado de búsqueda: miniatura teñida con el acento de la pista + título y artista.
+ * Fila de resultado de búsqueda: carátula real (con placeholder teñido) + título y artista.
  * Reutiliza [TrackThumbnail] para mantener el mismo lenguaje visual que Inicio.
  */
 @Composable
 fun SearchResultRow(
-    track: Track,
+    song: Song,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -45,18 +45,21 @@ fun SearchResultRow(
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrackThumbnail(accent = placeholderAccentFor(track.id))
+        TrackThumbnail(
+            accent = placeholderAccentFor(song.albumId),
+            artworkUri = song.artworkUri,
+        )
         Spacer(Modifier.width(14.dp))
         Column {
             Text(
-                text = track.title,
+                text = song.title,
                 style = MarluneTheme.typography.titleMedium,
                 color = MarluneTheme.colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = track.artist,
+                text = song.artist,
                 style = MarluneTheme.typography.bodyMedium,
                 color = MarluneTheme.colors.textSecondary,
                 maxLines = 1,

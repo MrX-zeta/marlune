@@ -1,76 +1,65 @@
 package com.luis.marlune.ui.search
 
 import androidx.lifecycle.ViewModel
-import com.luis.marlune.domain.model.Track
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.luis.marlune.data.repository.MusicRepository
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import java.util.Locale
 
 /**
- * ViewModel de Buscar.
- *
- * Filtra en memoria la biblioteca LOCAL a cada cambio de texto (síncrono, sin retardo). La
- * fuente real (índice de MediaStore) llegará en la capa `data/`. Gestiona además las búsquedas
- * recientes.
+ * ViewModel de Buscar: filtra en vivo la biblioteca LOCAL real ([MusicRepository]) a cada cambio de
+ * texto (búsqueda en el repositorio, sin retardo). Gestiona además las búsquedas recientes (en
+ * memoria por sesión; su persistencia llegará con Room). Sin mocks, sin red.
  */
-class SearchViewModel : ViewModel() {
+class SearchViewModel(repository: MusicRepository) : ViewModel() {
 
-    private val library: List<Track> = sampleLibrary()
+    private val query = MutableStateFlow("")
+    private val recents = MutableStateFlow<List<String>>(emptyList())
 
-    private val _uiState = MutableStateFlow(
-        SearchUiState(
-            query = "",
-            recentSearches = listOf("Lún", "lo-fi", "Bruma"),
-            results = emptyList(),
-        ),
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val results = query.flatMapLatest { repository.searchSongs(it) }
+
+    val uiState: StateFlow<SearchUiState> = combine(query, recents, results) { q, r, res ->
+        SearchUiState(query = q, recentSearches = r, results = res)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5_000),
+        initialValue = SearchUiState(query = "", recentSearches = emptyList(), results = emptyList()),
     )
-    val uiState: StateFlow<SearchUiState> = _uiState.asStateFlow()
 
-    fun onQueryChange(query: String) {
-        _uiState.update { it.copy(query = query, results = filter(query)) }
+    fun onQueryChange(text: String) {
+        query.value = text
     }
 
     fun onRecentSelected(term: String) {
-        _uiState.update { it.copy(query = term, results = filter(term)) }
+        query.value = term
     }
 
     fun onSubmit() {
-        val term = _uiState.value.query.trim()
+        val term = query.value.trim()
         if (term.isEmpty()) return
-        _uiState.update { state ->
-            val deduped = state.recentSearches.filterNot { it.equals(term, ignoreCase = true) }
-            state.copy(recentSearches = (listOf(term) + deduped).take(MAX_RECENT))
+        recents.update { current ->
+            val deduped = current.filterNot { it.equals(term, ignoreCase = true) }
+            (listOf(term) + deduped).take(MAX_RECENT)
         }
     }
 
     fun onClearQuery() {
-        _uiState.update { it.copy(query = "", results = emptyList()) }
+        query.value = ""
     }
 
-    /** Coincidencia por título, álbum, artista o género (contains, sin distinguir mayúsculas). */
-    private fun filter(query: String): List<Track> {
-        val term = query.trim().lowercase(Locale.getDefault())
-        if (term.isEmpty()) return emptyList()
-        return library.filter { track ->
-            track.title.lowercase(Locale.getDefault()).contains(term) ||
-                track.artist.lowercase(Locale.getDefault()).contains(term) ||
-                track.album?.lowercase(Locale.getDefault())?.contains(term) == true ||
-                track.genre?.lowercase(Locale.getDefault())?.contains(term) == true
-        }
-    }
+    companion object {
+        private const val MAX_RECENT = 10
 
-    private companion object {
-        const val MAX_RECENT = 10
-
-        fun sampleLibrary(): List<Track> = listOf(
-            Track(id = 1L, title = "Bruma", artist = "Lún", album = "Bruma", genre = "Ambient", durationMs = 198_000L),
-            Track(id = 2L, title = "Costa dormida", artist = "Maréas", album = "Costa dormida", genre = "Lo-fi", durationMs = 224_000L),
-            Track(id = 3L, title = "Vidrio", artist = "Nocta", album = "Vidrio", genre = "Electrónica", durationMs = 176_000L),
-            Track(id = 4L, title = "Reflejo", artist = "Aiko", album = "Reflejo", genre = "Lo-fi", durationMs = 205_000L),
-            Track(id = 5L, title = "Sal", artist = "Lún", album = "Bruma", genre = "Ambient", durationMs = 189_000L),
-            Track(id = 6L, title = "Marea baja", artist = "Maréas", album = "Costa dormida", genre = "Chillout", durationMs = 233_000L),
-        )
+        fun factory(repository: MusicRepository): androidx.lifecycle.ViewModelProvider.Factory =
+            viewModelFactory { initializer { SearchViewModel(repository) } }
     }
 }

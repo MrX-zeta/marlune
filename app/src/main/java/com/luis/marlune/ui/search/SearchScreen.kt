@@ -23,7 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
-import com.luis.marlune.domain.model.Track
+import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.domain.model.Song
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.search.components.RecentSearchChips
 import com.luis.marlune.ui.search.components.SearchField
@@ -33,9 +34,9 @@ import com.luis.marlune.ui.theme.MarluneTheme
 /** Punto de entrada con estado de Buscar. */
 @Composable
 fun SearchRoute(
-    onOpenTrack: (Track) -> Unit,
+    onOpenTrack: (Song) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: SearchViewModel = viewModel(),
+    viewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory(rememberMusicRepository())),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     SearchScreen(
@@ -63,7 +64,7 @@ fun SearchScreen(
     onSubmit: () -> Unit,
     onClear: () -> Unit,
     onRecentSelected: (String) -> Unit,
-    onOpenTrack: (Track) -> Unit,
+    onOpenTrack: (Song) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
@@ -97,19 +98,19 @@ fun SearchScreen(
 
 @Composable
 private fun SearchResults(
-    results: List<Track>,
-    onOpenTrack: (Track) -> Unit,
+    results: List<Song>,
+    onOpenTrack: (Song) -> Unit,
 ) {
     if (results.isEmpty()) {
         EmptyHint(text = stringResource(R.string.search_no_results))
         return
     }
     Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-        results.forEachIndexed { index, track ->
+        results.forEachIndexed { index, song ->
             // key por id: cada resultado nuevo entra con fade+rise; los que persisten no re-animan.
-            androidx.compose.runtime.key(track.id) {
+            androidx.compose.runtime.key(song.id) {
                 StaggeredReveal(index = index) {
-                    SearchResultRow(track = track, onClick = { onOpenTrack(track) })
+                    SearchResultRow(song = song, onClick = { onOpenTrack(song) })
                 }
             }
         }
