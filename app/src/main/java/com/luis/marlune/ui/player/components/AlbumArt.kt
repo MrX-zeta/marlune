@@ -2,11 +2,9 @@ package com.luis.marlune.ui.player.components
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -40,7 +38,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 private val ArtCorner = 24.dp
-private const val HorizontalCommitFraction = 0.28f
+private const val HorizontalCommitFraction = 0.22f // ~22 % del ancho para confirmar cambio de pista
 private const val HorizontalFlingVelocity = 1000f
 
 private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
@@ -103,6 +101,10 @@ fun AlbumArt(
                         val velocityTracker = VelocityTracker()
                         velocityTracker.addPosition(down.uptimeMillis, down.position)
                         var axis = DragAxis.Undecided
+                        // Desplazamiento horizontal ACUMULADO desde el inicio de ESTE gesto (parte
+                        // de 0, independiente de dónde empezó el dedo y de residuos previos). Decide
+                        // la dirección por su signo; nunca por la posición absoluta.
+                        var dragX = 0f
 
                         while (true) {
                             val event = awaitPointerEvent()
@@ -127,7 +129,9 @@ fun AlbumArt(
                             when (axis) {
                                 DragAxis.Horizontal -> {
                                     change.consume()
-                                    scope.launch { offsetX.snapTo(offsetX.value + delta.x) }
+                                    dragX += delta.x
+                                    val target = dragX // la carátula sigue el acumulado (misma dirección)
+                                    scope.launch { offsetX.snapTo(target) }
                                 }
 
                                 DragAxis.VerticalDown -> {
@@ -142,18 +146,20 @@ fun AlbumArt(
                         val velocity = velocityTracker.calculateVelocity()
                         when (axis) {
                             DragAxis.Horizontal -> {
-                                val dx = offsetX.value
-                                val vx = velocity.x
-                                when {
-                                    // Derecha → siguiente (sale por la derecha; la nueva entra por la izquierda).
-                                    dx >= horizontalThreshold || vx >= HorizontalFlingVelocity ->
-                                        scope.launch { crossSlide(offsetX, widthPx, exitToLeft = false, reducedMotion, onNext) }
-
-                                    // Izquierda → anterior.
-                                    dx <= -horizontalThreshold || vx <= -HorizontalFlingVelocity ->
-                                        scope.launch { crossSlide(offsetX, widthPx, exitToLeft = true, reducedMotion, onPrevious) }
-
-                                    else -> scope.launch { offsetX.animateTo(0f, settleSpring()) }
+                                // Una sola decisión de dirección (offset neto + fling) que alimenta
+                                // tanto la animación como el comando.
+                                val direction = resolveTrackSwipe(
+                                    netOffsetX = dragX,
+                                    velocityX = velocity.x,
+                                    commitDistancePx = horizontalThreshold,
+                                    flingVelocity = HorizontalFlingVelocity,
+                                )
+                                if (direction != null) {
+                                    scope.launch {
+                                        runTrackCrossSlide(direction, offsetX, widthPx, reducedMotion, onNext, onPrevious)
+                                    }
+                                } else {
+                                    scope.launch { offsetX.animateTo(0f, settleSpring()) }
                                 }
                             }
 
@@ -165,26 +171,6 @@ fun AlbumArt(
                 },
         )
     }
-}
-
-/** La carátula sale por un lado, se cambia la pista y la nueva entra por el opuesto. */
-private suspend fun crossSlide(
-    offsetX: Animatable<Float, *>,
-    widthPx: Float,
-    exitToLeft: Boolean,
-    reducedMotion: Boolean,
-    onCommit: () -> Unit,
-) {
-    if (reducedMotion) {
-        onCommit()
-        offsetX.snapTo(0f)
-        return
-    }
-    val exit = if (exitToLeft) -widthPx else widthPx
-    offsetX.animateTo(exit, tween(180, easing = FastOutLinearInEasing)) // salir acelerando
-    onCommit()
-    offsetX.snapTo(-exit) // la nueva entra desde el lado opuesto
-    offsetX.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
 }
 
 @Composable
