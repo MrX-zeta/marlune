@@ -1,8 +1,5 @@
 package com.luis.marlune.ui.library
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -29,6 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,7 +58,6 @@ fun LibraryRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     LibraryScreen(
         uiState = uiState,
-        onFilterSelected = viewModel::onFilterSelected,
         onRefresh = viewModel::onRefresh,
         onOpenEntry = onOpenEntry,
         modifier = modifier,
@@ -68,22 +65,25 @@ fun LibraryRoute(
 }
 
 /**
- * Pantalla de Biblioteca (sin estado).
+ * Pantalla de Biblioteca (sin estado de datos).
  *
- * Cabecera con el título y UN control de filtro (la búsqueda vive en su pestaña, sin lupa aquí).
- * Los chips animan la selección (color 180 ms + indicador deslizante); el cambio de contenido
- * entre categorías es un fade rápido (150 ms) sin slide. Las filas entran con stagger solo en la
- * primera carga.
+ * El chip seleccionado es estado de UI LOCAL y ligero: tocar un chip lo actualiza al instante, sin
+ * pasar por el ViewModel, así el feedback nunca espera a que se repinte la lista. Los chips animan
+ * la selección con `animate*AsState` (retargetable: en toques rápidos la pastilla persigue al último
+ * sin encolarse). El cambio de contenido es un SWAP DIRECTO (sin Crossfade) para respuesta inmediata:
+ * solo se lee la lista YA precalculada del UiState. Las filas entran con stagger solo en la 1.ª carga.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     uiState: LibraryUiState,
-    onFilterSelected: (LibraryFilter) -> Unit,
     onRefresh: () -> Unit,
     onOpenEntry: (LibraryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Selección local: instantánea y desacoplada del ViewModel y de la recomposición del contenido.
+    var selectedFilter by rememberSaveable { mutableStateOf(LibraryFilter.SONGS) }
+
     // El stagger de filas corre una sola vez (primera carga), no en cada cambio de filtro.
     var firstLoad by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { firstLoad = false }
@@ -92,8 +92,8 @@ fun LibraryScreen(
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             LibraryTopBar()
             LibraryFilterChips(
-                selected = uiState.selectedFilter,
-                onSelect = onFilterSelected,
+                selected = selectedFilter,
+                onSelect = { selectedFilter = it },
                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
             )
 
@@ -105,12 +105,12 @@ fun LibraryScreen(
             ) {
                 when {
                     uiState.isLoading -> LoadingRows(
-                        circularCover = uiState.selectedFilter == LibraryFilter.ARTISTS ||
-                            uiState.selectedFilter == LibraryFilter.PLAYLISTS,
+                        circularCover = selectedFilter == LibraryFilter.ARTISTS ||
+                            selectedFilter == LibraryFilter.PLAYLISTS,
                     )
 
                     // Contenedor desplazable para que el pull-to-refresh también funcione en vacío.
-                    uiState.isEmpty -> Column(
+                    uiState.isEmptyFor(selectedFilter) -> Column(
                         modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
                     ) {
                         EmptyState(
@@ -120,18 +120,13 @@ fun LibraryScreen(
                         )
                     }
 
-                    else -> Crossfade(
-                        targetState = uiState.selectedFilter,
-                        animationSpec = snapOrFade(),
-                        label = "libraryContent",
-                    ) { filter ->
-                        LibraryList(
-                            entries = uiState.entriesByFilter[filter].orEmpty(),
-                            filter = filter,
-                            animateEntrance = firstLoad,
-                            onOpenEntry = onOpenEntry,
-                        )
-                    }
+                    // Swap directo: lectura pura del mapa precalculado, sin transición que se encole.
+                    else -> LibraryList(
+                        entries = uiState.entriesFor(selectedFilter),
+                        filter = selectedFilter,
+                        animateEntrance = firstLoad,
+                        onOpenEntry = onOpenEntry,
+                    )
                 }
             }
         }
@@ -211,27 +206,20 @@ private fun demoMenuItems(): List<ContextMenuItem> = listOf(
     ContextMenuItem(R.string.library_menu_add_playlist) {},
 )
 
-// Fade rápido (150 ms) para el cambio de contenido; instantáneo con movimiento reducido.
-@Composable
-private fun snapOrFade() =
-    if (com.luis.marlune.ui.theme.LocalReducedMotion.current) snap() else tween<Float>(150)
-
 @Preview(showBackground = true, backgroundColor = 0xFF0A0910, heightDp = 800)
 @Composable
 private fun LibraryScreenPreview() {
     MarluneTheme {
         LibraryScreen(
             uiState = LibraryUiState(
-                selectedFilter = LibraryFilter.PLAYLISTS,
                 entriesByFilter = mapOf(
-                    LibraryFilter.PLAYLISTS to listOf(
+                    LibraryFilter.SONGS to listOf(
                         LibraryEntry(101L, "Noches de bruma", "18 canciones"),
                         LibraryEntry(102L, "Foco profundo", "42 canciones"),
                         LibraryEntry(103L, "Marea baja", "9 canciones"),
                     ),
                 ),
             ),
-            onFilterSelected = {},
             onRefresh = {},
             onOpenEntry = {},
         )
