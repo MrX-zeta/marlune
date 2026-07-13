@@ -9,6 +9,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,11 +54,17 @@ fun TrackThumbnail(
             modifier = Modifier.size(size * 0.4f),
         )
         if (artworkUri != null) {
+            val context = LocalContext.current
+            val key = remember(artworkUri) { artworkUri.toString() }
             AsyncImage(
-                model = ImageRequest.Builder(LocalContext.current)
-                    .data(artworkUri)
-                    .crossfade(true)
-                    .build(),
+                model = remember(key, context) {
+                    ImageRequest.Builder(context)
+                        .data(artworkUri)
+                        .memoryCacheKey(key) // clave estable por URI: reutiliza la caché, sin parpadeo
+                        .diskCacheKey(key)
+                        .crossfade(true)
+                        .build()
+                },
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.matchParentSize(),
