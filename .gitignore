@@ -1,0 +1,38 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+# Carpetas de compilación de todos los submódulos (ej. /app/build)
+build/
+*/build/
+
+# Archivos de firmas y llaves (Seguridad estricta: NUNCA deben ir al repo)
+*.jks
+*.keystore
+*.p12
+*.key
+*.pem
+
+# Archivos de secretos y variables locales (por si en el futuro los necesitas)
+secrets.properties
+apikeys.properties
+env.properties
+
+# Basura del sistema operativo (Windows/macOS)
+Thumbs.db
+ehthumbs.db
+.Trashes
+
+# Archivos generados por KSP/KAPT (Hilt y Room a veces los escapan del build folder)
+*.generated.idea/deploymentTargetSelector.xml
+**/.idea/deploymentTargetSelector.xml
+.kotlin/
+*.jks
+*.keystore
+*CONTEXT.md
