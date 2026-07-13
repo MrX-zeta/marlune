@@ -28,7 +28,6 @@ import kotlinx.coroutines.launch
  */
 class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
 
-    private val selectedFilter = MutableStateFlow(LibraryFilter.SONGS)
     private val refreshing = MutableStateFlow(false)
 
     /** Entradas por categoría, precalculadas fuera del hilo principal y memorizadas. */
@@ -57,11 +56,11 @@ class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
                 initialValue = Entries(emptyMap(), isLoading = true),
             )
 
-    // Cambiar de chip o el estado de refresco solo re-empaqueta el mapa YA calculado (barato).
+    // El mapa ya está precalculado; solo se re-empaqueta con el flag de refresco (barato). El chip
+    // seleccionado lo maneja la UI, así que cambiarlo no toca este flujo ni recalcula nada.
     val uiState: StateFlow<LibraryUiState> =
-        combine(entries, selectedFilter, refreshing) { derived, filter, isRefreshing ->
+        combine(entries, refreshing) { derived, isRefreshing ->
             LibraryUiState(
-                selectedFilter = filter,
                 entriesByFilter = derived.byFilter,
                 isLoading = derived.isLoading,
                 isRefreshing = isRefreshing,
@@ -69,16 +68,8 @@ class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = LibraryUiState(
-                selectedFilter = LibraryFilter.SONGS,
-                entriesByFilter = emptyMap(),
-                isLoading = true,
-            ),
+            initialValue = LibraryUiState(entriesByFilter = emptyMap(), isLoading = true),
         )
-
-    fun onFilterSelected(filter: LibraryFilter) {
-        selectedFilter.value = filter
-    }
 
     /** Escaneo manual: revisa directorios públicos y re-consulta; muestra "refrescando" mientras. */
     fun onRefresh() {

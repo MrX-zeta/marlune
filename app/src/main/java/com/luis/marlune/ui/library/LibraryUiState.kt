@@ -27,18 +27,21 @@ data class LibraryEntry(
 )
 
 /**
- * Estado de Biblioteca: filtro seleccionado y entradas por categoría (biblioteca LOCAL real).
- * `isLoading` cubre el arranque (shimmer); `isRefreshing`, el escaneo manual (pull-to-refresh).
+ * Estado de Biblioteca: entradas por categoría YA precalculadas (biblioteca LOCAL real).
+ *
+ * El filtro seleccionado NO vive aquí: es estado de UI ligero, propiedad de la pantalla, para que
+ * tocar un chip sea instantáneo y desacoplado de esta recomposición. `isLoading` cubre el arranque
+ * (shimmer); `isRefreshing`, el escaneo manual (pull-to-refresh).
  */
 @Immutable
 data class LibraryUiState(
-    val selectedFilter: LibraryFilter,
     val entriesByFilter: Map<LibraryFilter, List<LibraryEntry>>,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
 ) {
-    val currentEntries: List<LibraryEntry>
-        get() = entriesByFilter[selectedFilter].orEmpty()
+    /** Entradas de una categoría (lectura pura del mapa precalculado; sin derivar ni consultar). */
+    fun entriesFor(filter: LibraryFilter): List<LibraryEntry> = entriesByFilter[filter].orEmpty()
 
-    val isEmpty: Boolean get() = !isLoading && currentEntries.isEmpty()
+    /** Vacío para una categoría concreta (ya cargado y sin entradas). */
+    fun isEmptyFor(filter: LibraryFilter): Boolean = !isLoading && entriesFor(filter).isEmpty()
 }
