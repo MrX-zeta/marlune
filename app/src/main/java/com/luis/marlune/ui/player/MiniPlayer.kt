@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Pause
@@ -345,10 +346,12 @@ private fun MiniPlayPauseButton(
     IconButton(
         onClick = onClick,
         interactionSource = interaction,
-        modifier = modifier.graphicsLayer {
-            scaleX = pressScale
-            scaleY = pressScale
-        },
+        modifier = modifier
+            .size(52.dp) // ligeramente más grande que los 48 dp por defecto
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            },
     ) {
         AnimatedContent(
             targetState = isPlaying,
@@ -368,6 +371,7 @@ private fun MiniPlayPauseButton(
                     if (playing) R.string.player_pause else R.string.player_play,
                 ),
                 tint = iconTint,
+                modifier = Modifier.size(28.dp), // icono un poco mayor (24 dp por defecto)
             )
         }
     }
