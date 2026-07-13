@@ -5,4 +5,18 @@
     <string name="nav_home">Inicio</string>
     <string name="nav_library">Biblioteca</string>
     <string name="nav_search">Buscar</string>
+
+    <!-- Reproductor -->
+    <string name="player_playing_from">Reproduciendo desde</string>
+    <string name="player_minimize">Minimizar</string>
+    <string name="player_play">Reproducir</string>
+    <string name="player_pause">Pausar</string>
+    <string name="player_previous">Anterior</string>
+    <string name="player_next">Siguiente</string>
+    <string name="player_shuffle">Aleatorio</string>
+    <string name="player_repeat">Repetir</string>
+    <string name="player_repeat_one">Repetir una</string>
+    <string name="player_like">Me gusta</string>
+    <string name="player_unlike">Quitar me gusta</string>
+    <string name="player_artwork">Carátula del álbum</string>
 </resources>
