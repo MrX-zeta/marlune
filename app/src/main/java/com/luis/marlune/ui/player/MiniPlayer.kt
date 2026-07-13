@@ -2,6 +2,7 @@ package com.luis.marlune.ui.player
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -41,7 +42,6 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +58,8 @@ private const val PlayMorphMillis = 150
 // Recorrido (corto) para llegar al progreso 1 y magnitud del "levantamiento" acoplado.
 private val ExpandDragDistance = 100.dp
 private val ExpandLift = 20.dp
+private const val TrackCommitFraction = 0.28f // fracción del ancho para confirmar cambio de pista
+private const val TrackFlingVelocity = 1000f
 
 private enum class MiniDragAxis { Undecided, ExpandUp, Horizontal, Down }
 
@@ -79,6 +81,8 @@ fun MiniPlayer(
     uiState: PlayerUiState,
     onExpand: () -> Unit,
     onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onPrevious: () -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
     titleModifier: Modifier = Modifier,
@@ -86,12 +90,14 @@ fun MiniPlayer(
 ) {
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
-    val density = LocalDensity.current
     val dragProgress = remember { Animatable(0f) } // 0 = mini en reposo, 1 = listo para expandir
+    val offsetX = remember { Animatable(0f) } // desplazamiento del cambio de pista horizontal
 
     val expandGesture = Modifier
         .graphicsLayer {
-            // Efecto acoplado: la tarjeta (y con ella la carátula compartida) se levanta y crece.
+            // Efecto acoplado: la tarjeta (y con ella la carátula compartida) se levanta y crece
+            // al subir, o acompaña el dedo en horizontal al cambiar de pista.
+            translationX = offsetX.value
             translationY = -dragProgress.value * ExpandLift.toPx()
             val grow = 1f + dragProgress.value * 0.06f
             scaleX = grow
@@ -117,40 +123,76 @@ fun MiniPlayer(
                         val totalDy = change.position.y - down.position.y
                         if (abs(totalDx) >= touchSlop || abs(totalDy) >= touchSlop) {
                             axis = when {
-                                abs(totalDx) > abs(totalDy) -> MiniDragAxis.Horizontal // reservado
+                                abs(totalDx) > abs(totalDy) -> MiniDragAxis.Horizontal
                                 totalDy < 0f -> MiniDragAxis.ExpandUp
                                 else -> MiniDragAxis.Down // hacia abajo: sin acción en el mini
                             }
                         }
                     }
 
-                    // Solo el eje vertical hacia arriba conduce la expansión; se consume para no
-                    // disparar el tap. El tap (sin pasar el slop) NO se consume → lo maneja onClick.
-                    if (axis == MiniDragAxis.ExpandUp) {
-                        change.consume()
-                        val deltaUp = -change.positionChange().y
-                        scope.launch {
-                            dragProgress.snapTo((dragProgress.value + deltaUp / distancePx).coerceIn(0f, 1f))
+                    // Se consume el eje bloqueado (así no dispara el tap). El tap (sin pasar el
+                    // slop) NO se consume → lo maneja el onClick del PressableCard.
+                    when (axis) {
+                        MiniDragAxis.ExpandUp -> {
+                            change.consume()
+                            val deltaUp = -change.positionChange().y
+                            scope.launch {
+                                dragProgress.snapTo((dragProgress.value + deltaUp / distancePx).coerceIn(0f, 1f))
+                            }
                         }
+
+                        MiniDragAxis.Horizontal -> {
+                            change.consume()
+                            val deltaX = change.positionChange().x
+                            scope.launch { offsetX.snapTo(offsetX.value + deltaX) }
+                        }
+
+                        else -> {}
                     }
                 }
 
-                if (axis == MiniDragAxis.ExpandUp) {
-                    val velocityY = velocityTracker.calculateVelocity().y
-                    val commit = dragProgress.value >= 0.35f || velocityY <= -1200f
-                    if (commit) {
-                        onExpand() // misma transición mini↔full, recorrida en sentido inverso
-                        scope.launch { dragProgress.snapTo(0f) }
-                    } else {
-                        scope.launch {
-                            if (reducedMotion) {
-                                dragProgress.snapTo(0f)
-                            } else {
-                                // Vuelta al mini; spring rápido (se asienta bajo 300 ms), sin rebote.
-                                dragProgress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+                val velocity = velocityTracker.calculateVelocity()
+                when (axis) {
+                    MiniDragAxis.ExpandUp -> {
+                        val commit = dragProgress.value >= 0.35f || velocity.y <= -1200f
+                        if (commit) {
+                            onExpand() // misma transición mini↔full, recorrida en sentido inverso
+                            scope.launch { dragProgress.snapTo(0f) }
+                        } else {
+                            scope.launch {
+                                if (reducedMotion) {
+                                    dragProgress.snapTo(0f)
+                                } else {
+                                    // Vuelta al mini; spring rápido (se asienta bajo 300 ms), sin rebote.
+                                    dragProgress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+                                }
                             }
                         }
                     }
+
+                    MiniDragAxis.Horizontal -> {
+                        val width = size.width.toFloat()
+                        val threshold = width * TrackCommitFraction
+                        val dx = offsetX.value
+                        when {
+                            // Derecha → siguiente; izquierda → anterior (preferencia explícita).
+                            dx >= threshold || velocity.x >= TrackFlingVelocity ->
+                                scope.launch { trackCrossSlide(offsetX, width, exitToLeft = false, reducedMotion, onNext) }
+
+                            dx <= -threshold || velocity.x <= -TrackFlingVelocity ->
+                                scope.launch { trackCrossSlide(offsetX, width, exitToLeft = true, reducedMotion, onPrevious) }
+
+                            else -> scope.launch {
+                                if (reducedMotion) {
+                                    offsetX.snapTo(0f)
+                                } else {
+                                    offsetX.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+                                }
+                            }
+                        }
+                    }
+
+                    else -> {}
                 }
             }
         }
@@ -196,6 +238,26 @@ fun MiniPlayer(
             MiniPlayPauseButton(isPlaying = uiState.isPlaying, onClick = onPlayPause)
         }
     }
+}
+
+/** El mini sale por un lado, se cambia la pista y el contenido nuevo entra por el opuesto. */
+private suspend fun trackCrossSlide(
+    offsetX: Animatable<Float, *>,
+    widthPx: Float,
+    exitToLeft: Boolean,
+    reducedMotion: Boolean,
+    onCommit: () -> Unit,
+) {
+    if (reducedMotion) {
+        onCommit()
+        offsetX.snapTo(0f)
+        return
+    }
+    val exit = if (exitToLeft) -widthPx else widthPx
+    offsetX.animateTo(exit, tween(180, easing = FastOutLinearInEasing)) // salir acelerando
+    onCommit()
+    offsetX.snapTo(-exit) // el contenido de la pista nueva entra desde el lado opuesto
+    offsetX.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
 }
 
 /**
