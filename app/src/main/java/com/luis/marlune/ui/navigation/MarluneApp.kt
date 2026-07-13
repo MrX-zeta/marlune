@@ -34,6 +34,8 @@ import com.luis.marlune.ui.library.LibraryRoute
 import com.luis.marlune.ui.player.MiniPlayer
 import com.luis.marlune.ui.player.PlayerEvent
 import com.luis.marlune.ui.player.PlayerScreen
+import com.luis.marlune.ui.permissions.PermissionRationaleScreen
+import com.luis.marlune.ui.permissions.rememberAudioPermissionState
 import com.luis.marlune.ui.player.PlayerViewModel
 import com.luis.marlune.ui.search.SearchRoute
 import com.luis.marlune.ui.theme.LocalReducedMotion
@@ -58,6 +60,14 @@ private const val ARTIST_KEY = "player-artist"
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun MarluneApp(modifier: Modifier = Modifier) {
+    // Sin permiso de audio no hay música local que mostrar: se pide en runtime y, si no está
+    // concedido, se explica por qué (con acción para conceder o abrir Ajustes).
+    val audioPermission = rememberAudioPermissionState()
+    if (!audioPermission.isGranted) {
+        PermissionRationaleScreen(state = audioPermission, modifier = modifier)
+        return
+    }
+
     val reducedMotion = LocalReducedMotion.current
     val playerViewModel: PlayerViewModel = viewModel()
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()

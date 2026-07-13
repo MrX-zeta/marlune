@@ -50,4 +50,11 @@
     <string name="search_recent">Búsquedas recientes</string>
     <string name="search_no_results">Sin resultados en tu biblioteca</string>
     <string name="search_empty_hint">Busca en tu biblioteca local</string>
+
+    <!-- Permiso de música -->
+    <string name="permission_title">Marlune necesita tu música</string>
+    <string name="permission_body">Para mostrar y reproducir las canciones de tu dispositivo. Todo local, sin conexión.</string>
+    <string name="permission_body_settings">Concede el acceso a “Música y audio” en Ajustes para ver tu biblioteca. Todo local, sin conexión.</string>
+    <string name="permission_grant">Conceder acceso</string>
+    <string name="permission_open_settings">Abrir ajustes</string>
 </resources>
