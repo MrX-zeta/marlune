@@ -16,6 +16,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -50,6 +51,7 @@ import com.luis.marlune.ui.components.PressableCard
 import com.luis.marlune.ui.home.components.TrackThumbnail
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -64,6 +66,7 @@ private val ExpandDragDistance = 100.dp
 private val ExpandLift = 20.dp
 private const val TrackCommitFraction = 0.28f // fracción del ancho para confirmar cambio de pista
 private const val TrackFlingVelocity = 1000f
+private const val TapHighlightDelayMillis = 100L // espera antes de iluminar (evita destello al deslizar)
 
 private enum class MiniDragAxis { Undecided, ExpandUp, Horizontal, Down }
 
@@ -96,6 +99,8 @@ fun MiniPlayer(
     val scope = rememberCoroutineScope()
     val dragProgress = remember { Animatable(0f) } // 0 = mini en reposo, 1 = listo para expandir
     val offsetX = remember { Animatable(0f) } // desplazamiento del cambio de pista horizontal
+    // State layer de la card, controlado por el detector: solo se ilumina en tap real, no al deslizar.
+    val interactionSource = remember { MutableInteractionSource() }
 
     val expandGesture = Modifier
         .graphicsLayer {
@@ -115,11 +120,30 @@ fun MiniPlayer(
                 val velocityTracker = VelocityTracker()
                 velocityTracker.addPosition(down.uptimeMillis, down.position)
                 var axis = MiniDragAxis.Undecided
+                var consumedByChild = false // p. ej. el botón play recoge el tap
+
+                // Press diferido: la iluminación solo aparece si el dedo se mantiene sin superar el
+                // slop (se confirma como tap). Se cancela en cuanto empieza el arrastre.
+                var pressInteraction: PressInteraction.Press? = null
+                val pressJob = scope.launch {
+                    delay(TapHighlightDelayMillis)
+                    val press = PressInteraction.Press(down.position)
+                    pressInteraction = press
+                    interactionSource.emit(press)
+                }
+                fun cancelHighlight() {
+                    pressJob.cancel()
+                    pressInteraction?.let { press ->
+                        pressInteraction = null
+                        scope.launch { interactionSource.emit(PressInteraction.Cancel(press)) }
+                    }
+                }
 
                 while (true) {
                     val event = awaitPointerEvent()
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                     velocityTracker.addPosition(change.uptimeMillis, change.position)
+                    if (axis == MiniDragAxis.Undecided && change.isConsumed) consumedByChild = true
                     if (!change.pressed) break
 
                     if (axis == MiniDragAxis.Undecided) {
@@ -131,11 +155,12 @@ fun MiniPlayer(
                                 totalDy < 0f -> MiniDragAxis.ExpandUp
                                 else -> MiniDragAxis.Down // hacia abajo: sin acción en el mini
                             }
+                            cancelHighlight() // empezó el arrastre → sin iluminación; manda el gesto
                         }
                     }
 
                     // Se consume el eje bloqueado (así no dispara el tap). El tap (sin pasar el
-                    // slop) NO se consume → lo maneja el onClick del PressableCard.
+                    // slop) NO se consume → se resuelve como tap al soltar.
                     when (axis) {
                         MiniDragAxis.ExpandUp -> {
                             change.consume()
@@ -157,6 +182,22 @@ fun MiniPlayer(
 
                 val velocity = velocityTracker.calculateVelocity()
                 when (axis) {
+                    MiniDragAxis.Undecided -> {
+                        // Sin arrastre. Si un hijo (botón play) recogió el tap, no ilumines ni expandas.
+                        if (consumedByChild) {
+                            cancelHighlight()
+                        } else {
+                            // Tap real: asegura el press (si el retardo no llegó) y suéltalo → ripple.
+                            pressJob.cancel()
+                            val press = pressInteraction ?: PressInteraction.Press(down.position).also {
+                                pressInteraction = it
+                                scope.launch { interactionSource.emit(it) }
+                            }
+                            scope.launch { interactionSource.emit(PressInteraction.Release(press)) }
+                            onExpand()
+                        }
+                    }
+
                     MiniDragAxis.ExpandUp -> {
                         val commit = dragProgress.value >= 0.35f || velocity.y <= -1200f
                         if (commit) {
@@ -202,10 +243,11 @@ fun MiniPlayer(
         }
 
     PressableCard(
-        onClick = onExpand,
+        onClick = null, // el tap lo resuelve el detector unificado (para distinguir tap de swipe)
         modifier = modifier.then(expandGesture).fillMaxWidth(),
         color = MarluneTheme.colors.surfaceElevated,
         shadowElevation = 6.dp, // flota sobre la barra
+        interactionSource = interactionSource,
     ) {
         Row(
             modifier = Modifier
