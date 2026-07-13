@@ -23,18 +23,18 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.luis.marlune.domain.model.Track
+import com.luis.marlune.domain.model.Song
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import com.luis.marlune.ui.theme.placeholderAccentFor
 
 /**
- * Fila de "Escuchado hace poco": miniatura teñida con el acento de la pista + título y artista.
+ * Fila de "Escuchado hace poco": carátula real (con placeholder teñido) + título y artista.
  * Solo feedback de press (escala 0.98); el scroll debe sentirse instantáneo (sin animación).
  */
 @Composable
 fun RecentTrackRow(
-    track: Track,
+    song: Song,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -64,18 +64,21 @@ fun RecentTrackRow(
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TrackThumbnail(accent = placeholderAccentFor(track.id))
+        TrackThumbnail(
+            accent = placeholderAccentFor(song.albumId),
+            artworkUri = song.artworkUri,
+        )
         Spacer(Modifier.width(14.dp))
         Column {
             Text(
-                text = track.title,
+                text = song.title,
                 style = MarluneTheme.typography.titleMedium,
                 color = MarluneTheme.colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = track.artist,
+                text = song.artist,
                 style = MarluneTheme.typography.bodyMedium,
                 color = MarluneTheme.colors.textSecondary,
                 maxLines = 1,

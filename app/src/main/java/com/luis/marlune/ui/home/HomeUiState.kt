@@ -1,7 +1,8 @@
 package com.luis.marlune.ui.home
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
-import com.luis.marlune.domain.model.Track
+import com.luis.marlune.domain.model.Song
 
 /** Franja del día para el saludo protagonista de la cabecera. */
 enum class Greeting { MORNING, AFTERNOON, NIGHT }
@@ -9,26 +10,42 @@ enum class Greeting { MORNING, AFTERNOON, NIGHT }
 /**
  * Estado de la pantalla de Inicio.
  *
- * `recentTracks` ya viene deduplicado por el ViewModel (misma canción no se repite).
- * Todo procede de la biblioteca LOCAL; no hay catálogos remotos. La reanudación de la última
- * pista la cubre el mini-player persistente, por lo que no hay card "Continuar escuchando".
+ * `recent` procede de la biblioteca LOCAL real (MediaStore). Hasta que exista historial de
+ * reproducción (Room, Fase 3), "Escuchado hace poco" muestra las canciones recién añadidas.
+ * `isLoading` cubre el arranque (shimmer); `isEmpty`, un dispositivo sin música.
  */
 @Immutable
 data class HomeUiState(
     val greeting: Greeting,
-    val recentTracks: List<Track>,
+    val recent: List<Song>,
+    val isLoading: Boolean,
 ) {
+    val isEmpty: Boolean get() = !isLoading && recent.isEmpty()
+
     companion object {
-        /** Estado de ejemplo para previews. */
+        /** Estado de ejemplo para previews (no se usa en ejecución). */
         val Preview = HomeUiState(
             greeting = Greeting.NIGHT,
-            recentTracks = listOf(
-                Track(id = 1L, title = "Bruma", artist = "Lún", durationMs = 198_000L),
-                Track(id = 2L, title = "Costa dormida", artist = "Maréas", durationMs = 224_000L),
-                Track(id = 3L, title = "Vidrio", artist = "Nocta", durationMs = 176_000L),
-                Track(id = 4L, title = "Reflejo", artist = "Aiko", durationMs = 205_000L),
-                Track(id = 5L, title = "Sal", artist = "Lún", durationMs = 189_000L),
-            ),
+            recent = List(5) { i ->
+                sampleSong(i.toLong() + 1, listOf("Bruma", "Costa dormida", "Vidrio", "Reflejo", "Sal")[i], "Lún")
+            },
+            isLoading = false,
+        )
+
+        private fun sampleSong(id: Long, title: String, artist: String) = Song(
+            id = id,
+            title = title,
+            artist = artist,
+            artistId = id,
+            album = title,
+            albumId = id,
+            durationMs = 198_000L,
+            trackNumber = 1,
+            year = 2024,
+            genre = null,
+            dateAdded = id,
+            contentUri = Uri.EMPTY,
+            artworkUri = null,
         )
     }
 }

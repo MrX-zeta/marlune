@@ -1,50 +1,51 @@
 package com.luis.marlune.ui.home
 
 import androidx.lifecycle.ViewModel
-import com.luis.marlune.domain.model.Track
-import kotlinx.coroutines.flow.MutableStateFlow
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.luis.marlune.data.repository.LibraryState
+import com.luis.marlune.data.repository.MusicRepository
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import java.time.LocalTime
 
+private const val RecentLimit = 8
+
 /**
- * ViewModel de Inicio.
- *
- * De momento sirve datos de ejemplo de la biblioteca LOCAL; la fuente real (MediaStore /
- * historial de reproducción) llegará en la capa `data/`. Se encarga de deduplicar el historial
- * reciente antes de exponerlo a la UI.
+ * ViewModel de Inicio: proyecta la biblioteca LOCAL real ([MusicRepository]) al estado de la
+ * pantalla. "Escuchado hace poco" son, de momento, las canciones recién añadidas (por `dateAdded`);
+ * cuando llegue el historial (Room, Fase 3) se cambiará solo la fuente. Sin mocks, sin red.
  */
-class HomeViewModel : ViewModel() {
+class HomeViewModel(repository: MusicRepository) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(buildInitialState())
-    val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
-
-    private fun buildInitialState(): HomeUiState {
-        // El historial de origen puede traer repetidos (misma pista escuchada varias veces).
-        val rawRecent = listOf(
-            Track(id = 1L, title = "Bruma", artist = "Lún", durationMs = 198_000L),
-            Track(id = 2L, title = "Costa dormida", artist = "Maréas", durationMs = 224_000L),
-            Track(id = 1L, title = "Bruma", artist = "Lún", durationMs = 198_000L), // duplicado
-            Track(id = 3L, title = "Vidrio", artist = "Nocta", durationMs = 176_000L),
-            Track(id = 4L, title = "Reflejo", artist = "Aiko", durationMs = 205_000L),
-            Track(id = 5L, title = "Sal", artist = "Lún", durationMs = 189_000L),
+    val uiState: StateFlow<HomeUiState> = repository.library
+        .map { state -> state.toHomeUiState() }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = HomeUiState(greetingNow(), emptyList(), isLoading = true),
         )
 
-        val recent = rawRecent.dedupById()
-
-        return HomeUiState(
-            greeting = greetingForHour(LocalTime.now().hour),
-            recentTracks = recent,
+    private fun LibraryState.toHomeUiState(): HomeUiState = when (this) {
+        LibraryState.Loading -> HomeUiState(greetingNow(), emptyList(), isLoading = true)
+        is LibraryState.Content -> HomeUiState(
+            greeting = greetingNow(),
+            recent = songs.sortedByDescending { it.dateAdded }.take(RecentLimit),
+            isLoading = false,
         )
     }
 
-    /** Elimina pistas repetidas conservando el primer (más reciente) encuentro. */
-    private fun List<Track>.dedupById(): List<Track> =
-        distinctBy { it.id }
-
-    private fun greetingForHour(hour: Int): Greeting = when (hour) {
+    private fun greetingNow(): Greeting = when (LocalTime.now().hour) {
         in 5..11 -> Greeting.MORNING
         in 12..19 -> Greeting.AFTERNOON
         else -> Greeting.NIGHT
+    }
+
+    companion object {
+        fun factory(repository: MusicRepository): androidx.lifecycle.ViewModelProvider.Factory =
+            viewModelFactory { initializer { HomeViewModel(repository) } }
     }
 }

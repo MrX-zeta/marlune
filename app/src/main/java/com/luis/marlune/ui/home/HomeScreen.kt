@@ -26,8 +26,13 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.LibraryMusic
 import com.luis.marlune.R
-import com.luis.marlune.domain.model.Track
+import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.domain.model.Song
+import com.luis.marlune.ui.components.EmptyState
+import com.luis.marlune.ui.components.LoadingRows
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.home.components.LibraryShortcutsGrid
 import com.luis.marlune.ui.home.components.RecentTrackRow
@@ -38,12 +43,12 @@ private const val RecentPreviewCount = 4
 /** Punto de entrada con estado de Inicio. Los callbacks los resolverá la navegación. */
 @Composable
 fun HomeRoute(
-    onPlayTrack: (Track) -> Unit,
+    onPlayTrack: (Song) -> Unit,
     onShortcutClick: (LibraryShortcut) -> Unit,
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
-    viewModel: HomeViewModel = viewModel(),
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.factory(rememberMusicRepository())),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     HomeScreen(
@@ -67,7 +72,7 @@ fun HomeRoute(
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
-    onPlayTrack: (Track) -> Unit,
+    onPlayTrack: (Song) -> Unit,
     onShortcutClick: (LibraryShortcut) -> Unit,
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
@@ -94,10 +99,18 @@ fun HomeScreen(
             RecentHeader(onSeeAllRecent = onSeeAllRecent)
             Spacer(Modifier.height(8.dp))
 
-            // Máximo 4 ítems visibles; el stagger se conserva sobre ellos.
-            uiState.recentTracks.take(RecentPreviewCount).forEachIndexed { index, track ->
-                StaggeredReveal(index = index) {
-                    RecentTrackRow(track = track, onClick = { onPlayTrack(track) })
+            when {
+                uiState.isLoading -> LoadingRows(count = RecentPreviewCount)
+                uiState.isEmpty -> EmptyState(
+                    icon = Icons.Rounded.LibraryMusic,
+                    title = stringResource(R.string.home_empty_title),
+                    hint = stringResource(R.string.home_empty_hint),
+                )
+                // Máximo 4 ítems visibles; el stagger se conserva sobre ellos.
+                else -> uiState.recent.take(RecentPreviewCount).forEachIndexed { index, song ->
+                    StaggeredReveal(index = index) {
+                        RecentTrackRow(song = song, onClick = { onPlayTrack(song) })
+                    }
                 }
             }
 
