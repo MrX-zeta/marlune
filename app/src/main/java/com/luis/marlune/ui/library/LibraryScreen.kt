@@ -8,9 +8,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.LibraryMusic
@@ -88,6 +88,12 @@ fun LibraryScreen(
     var firstLoad by remember { mutableStateOf(true) }
     LaunchedEffect(Unit) { firstLoad = false }
 
+    // UNA sola LazyColumn persistente: su estado se hoistea aquí y NO se recrea al cambiar de chip.
+    // Cambiar de filtro solo cambia el DATA; Compose recicla los slots (keys + contentType).
+    val listState = rememberLazyListState()
+    // Al cambiar de categoría se vuelve arriba (evita arrastrar el offset de una lista a otra). O(1).
+    LaunchedEffect(selectedFilter) { listState.scrollToItem(0) }
+
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
             LibraryTopBar()
@@ -103,27 +109,18 @@ fun LibraryScreen(
                 onRefresh = onRefresh,
                 modifier = Modifier.weight(1f).fillMaxWidth(),
             ) {
-                when {
-                    uiState.isLoading -> LoadingRows(
+                // Carga (solo arranque) = shimmer; el resto SIEMPRE es la misma LazyColumn (contenido
+                // o vacío como item), así el camino caliente nunca desmonta ni recrea la lista.
+                if (uiState.isLoading) {
+                    LoadingRows(
                         circularCover = selectedFilter == LibraryFilter.ARTISTS ||
                             selectedFilter == LibraryFilter.PLAYLISTS,
                     )
-
-                    // Contenedor desplazable para que el pull-to-refresh también funcione en vacío.
-                    uiState.isEmptyFor(selectedFilter) -> Column(
-                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-                    ) {
-                        EmptyState(
-                            icon = Icons.Rounded.LibraryMusic,
-                            title = stringResource(R.string.library_empty_title),
-                            hint = stringResource(R.string.library_empty_hint),
-                        )
-                    }
-
-                    // Swap directo: lectura pura del mapa precalculado, sin transición que se encole.
-                    else -> LibraryList(
+                } else {
+                    LibraryList(
                         entries = uiState.entriesFor(selectedFilter),
                         filter = selectedFilter,
+                        listState = listState,
                         animateEntrance = firstLoad,
                         onOpenEntry = onOpenEntry,
                     )
@@ -137,6 +134,7 @@ fun LibraryScreen(
 private fun LibraryList(
     entries: List<LibraryEntry>,
     filter: LibraryFilter,
+    listState: LazyListState,
     animateEntrance: Boolean,
     onOpenEntry: (LibraryEntry) -> Unit,
 ) {
@@ -146,26 +144,38 @@ private fun LibraryList(
     // Menú común a todas las filas: se construye una vez, no por fila ni por recomposición.
     val menuItems = remember { demoMenuItems() }
 
-    // LazyColumn: solo compone (y solo pide carátula a Coil) las filas VISIBLES; keys estables por id
-    // y `contentType` único para que Compose reutilice slots al cambiar de chip (sin recargar arte).
-    // El stagger corre una vez, solo en la primera pantalla visible; el scroll queda instantáneo.
+    // LazyColumn persistente: solo compone (y pide carátula a Coil) las filas VISIBLES; keys estables
+    // por id + `contentType` único para reciclar slots al cambiar de chip (sin recargar arte). El
+    // vacío es un item de la MISMA lista (no desmonta la LazyColumn ni rompe el pull-to-refresh). El
+    // stagger corre una vez, solo en la primera pantalla visible; el scroll queda instantáneo.
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
-        itemsIndexed(
-            entries,
-            key = { _, entry -> entry.id },
-            contentType = { _, _ -> "libraryRow" },
-        ) { index, entry ->
-            StaggeredReveal(index = index, enabled = animateEntrance && index < StaggerVisibleCount) {
-                LibraryRow(
-                    entry = entry,
-                    coverIcon = coverIcon,
-                    coverShape = coverShape,
-                    onClick = { onOpenEntry(entry) },
-                    menuItems = menuItems,
+        if (entries.isEmpty()) {
+            item(key = "library-empty", contentType = "empty") {
+                EmptyState(
+                    icon = Icons.Rounded.LibraryMusic,
+                    title = stringResource(R.string.library_empty_title),
+                    hint = stringResource(R.string.library_empty_hint),
                 )
+            }
+        } else {
+            itemsIndexed(
+                entries,
+                key = { _, entry -> entry.id },
+                contentType = { _, _ -> "libraryRow" },
+            ) { index, entry ->
+                StaggeredReveal(index = index, enabled = animateEntrance && index < StaggerVisibleCount) {
+                    LibraryRow(
+                        entry = entry,
+                        coverIcon = coverIcon,
+                        coverShape = coverShape,
+                        onClick = { onOpenEntry(entry) },
+                        menuItems = menuItems,
+                    )
+                }
             }
         }
     }
