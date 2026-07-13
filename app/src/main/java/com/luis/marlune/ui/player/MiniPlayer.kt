@@ -12,6 +12,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Column
@@ -31,10 +33,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -43,17 +50,29 @@ import com.luis.marlune.ui.components.PressableCard
 import com.luis.marlune.ui.home.components.TrackThumbnail
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 private const val PlayMorphMillis = 150
 
+// Recorrido (corto) para llegar al progreso 1 y magnitud del "levantamiento" acoplado.
+private val ExpandDragDistance = 100.dp
+private val ExpandLift = 20.dp
+
+private enum class MiniDragAxis { Undecided, ExpandUp, Horizontal, Down }
+
 /**
- * Mini-player como tarjeta flotante sobre la barra inferior. Tocarlo (fuera del botón) expande
- * al reproductor completo; la carátula es el elemento compartido que viaja en esa transición
- * ([artModifier]). El botón play/pausa comparte el lenguaje de motion del botón grande de
- * Now Playing; no lleva marea para mantenerlo compacto.
+ * Mini-player como tarjeta flotante sobre la barra inferior. Tocarlo (fuera del botón) o
+ * deslizarlo hacia arriba lo expande al reproductor completo; la carátula es el elemento
+ * compartido que viaja en esa transición ([artModifier]). El botón play/pausa comparte el
+ * lenguaje de motion del botón grande de Now Playing; no lleva marea para mantenerlo compacto.
  *
- * Usa [PressableCard] para heredar el mismo radio de esquina que el resto de tarjetas de la app;
- * la sombra suave y el inset lateral (aplicados por quien lo coloca) lo despegan de la barra.
+ * El deslizar-arriba es el espejo del deslizar-abajo que colapsa Now Playing: al subir, la
+ * tarjeta se levanta y crece acoplada al dedo (la carátula compartida viaja con ella); al
+ * soltar, hace snap (>35 % o velocidad → expande con la misma transición; si no, vuelve al mini
+ * con spring). Tap y swipe-arriba hacen lo mismo, así siempre se puede abrir.
+ *
+ * Usa [PressableCard] para heredar el mismo radio de esquina que el resto de tarjetas de la app.
  */
 @Composable
 fun MiniPlayer(
@@ -65,9 +84,80 @@ fun MiniPlayer(
     titleModifier: Modifier = Modifier,
     artistModifier: Modifier = Modifier,
 ) {
+    val reducedMotion = LocalReducedMotion.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val dragProgress = remember { Animatable(0f) } // 0 = mini en reposo, 1 = listo para expandir
+
+    val expandGesture = Modifier
+        .graphicsLayer {
+            // Efecto acoplado: la tarjeta (y con ella la carátula compartida) se levanta y crece.
+            translationY = -dragProgress.value * ExpandLift.toPx()
+            val grow = 1f + dragProgress.value * 0.06f
+            scaleX = grow
+            scaleY = grow
+        }
+        .pointerInput(reducedMotion) {
+            val touchSlop = viewConfiguration.touchSlop
+            val distancePx = ExpandDragDistance.toPx()
+            awaitEachGesture {
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val velocityTracker = VelocityTracker()
+                velocityTracker.addPosition(down.uptimeMillis, down.position)
+                var axis = MiniDragAxis.Undecided
+
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    velocityTracker.addPosition(change.uptimeMillis, change.position)
+                    if (!change.pressed) break
+
+                    if (axis == MiniDragAxis.Undecided) {
+                        val totalDx = change.position.x - down.position.x
+                        val totalDy = change.position.y - down.position.y
+                        if (abs(totalDx) >= touchSlop || abs(totalDy) >= touchSlop) {
+                            axis = when {
+                                abs(totalDx) > abs(totalDy) -> MiniDragAxis.Horizontal // reservado
+                                totalDy < 0f -> MiniDragAxis.ExpandUp
+                                else -> MiniDragAxis.Down // hacia abajo: sin acción en el mini
+                            }
+                        }
+                    }
+
+                    // Solo el eje vertical hacia arriba conduce la expansión; se consume para no
+                    // disparar el tap. El tap (sin pasar el slop) NO se consume → lo maneja onClick.
+                    if (axis == MiniDragAxis.ExpandUp) {
+                        change.consume()
+                        val deltaUp = -change.positionChange().y
+                        scope.launch {
+                            dragProgress.snapTo((dragProgress.value + deltaUp / distancePx).coerceIn(0f, 1f))
+                        }
+                    }
+                }
+
+                if (axis == MiniDragAxis.ExpandUp) {
+                    val velocityY = velocityTracker.calculateVelocity().y
+                    val commit = dragProgress.value >= 0.35f || velocityY <= -1200f
+                    if (commit) {
+                        onExpand() // misma transición mini↔full, recorrida en sentido inverso
+                        scope.launch { dragProgress.snapTo(0f) }
+                    } else {
+                        scope.launch {
+                            if (reducedMotion) {
+                                dragProgress.snapTo(0f)
+                            } else {
+                                // Vuelta al mini; spring rápido (se asienta bajo 300 ms), sin rebote.
+                                dragProgress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
     PressableCard(
         onClick = onExpand,
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier.then(expandGesture).fillMaxWidth(),
         color = MarluneTheme.colors.surfaceElevated,
         shadowElevation = 6.dp, // flota sobre la barra
     ) {
