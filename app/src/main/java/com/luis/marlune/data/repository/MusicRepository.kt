@@ -1,0 +1,74 @@
+package com.luis.marlune.data.repository
+
+import com.luis.marlune.data.mediastore.MediaStoreAudioSource
+import com.luis.marlune.domain.model.Album
+import com.luis.marlune.domain.model.Artist
+import com.luis.marlune.domain.model.Song
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import java.util.Locale
+
+/**
+ * Única puerta a la biblioteca LOCAL. Comparte un solo Flow de canciones (un solo
+ * `ContentObserver`) y deriva de él álbumes, artistas y la búsqueda local. Sin red.
+ */
+class MusicRepository(
+    private val source: MediaStoreAudioSource,
+    scope: CoroutineScope,
+) {
+
+    /** Biblioteca completa, auto-refrescada por MediaStore. Compartida entre todos los consumidores. */
+    val songs: StateFlow<List<Song>> = source.observeSongs()
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val albums: Flow<List<Album>> = songs.map { list -> deriveAlbums(list) }
+
+    val artists: Flow<List<Artist>> = songs.map { list -> deriveArtists(list) }
+
+    /** Búsqueda LOCAL por título, álbum, artista o género (contains, sin distinguir mayúsculas). */
+    fun searchSongs(query: String): Flow<List<Song>> {
+        val term = query.trim().lowercase(Locale.getDefault())
+        return songs.map { list ->
+            if (term.isEmpty()) {
+                emptyList()
+            } else {
+                list.filter { song ->
+                    song.title.lowercase(Locale.getDefault()).contains(term) ||
+                        song.artist.lowercase(Locale.getDefault()).contains(term) ||
+                        song.album.lowercase(Locale.getDefault()).contains(term) ||
+                        song.genre?.lowercase(Locale.getDefault())?.contains(term) == true
+                }
+            }
+        }
+    }
+
+    private fun deriveAlbums(list: List<Song>): List<Album> =
+        list.groupBy { it.albumId }
+            .map { (albumId, songs) ->
+                val first = songs.first()
+                Album(
+                    id = albumId,
+                    title = first.album,
+                    artist = first.artist,
+                    artworkUri = first.artworkUri,
+                    songCount = songs.size,
+                )
+            }
+            .sortedBy { it.title.lowercase(Locale.getDefault()) }
+
+    private fun deriveArtists(list: List<Song>): List<Artist> =
+        list.groupBy { it.artistId }
+            .map { (artistId, songs) ->
+                Artist(
+                    id = artistId,
+                    name = songs.first().artist,
+                    albumCount = songs.map { it.albumId }.distinct().size,
+                    songCount = songs.size,
+                )
+            }
+            .sortedBy { it.name.lowercase(Locale.getDefault()) }
+}
