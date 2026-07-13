@@ -42,4 +42,12 @@
     <string name="library_menu_play">Reproducir</string>
     <string name="library_menu_add_queue">Añadir a la cola</string>
     <string name="library_menu_add_playlist">Añadir a una lista</string>
+
+    <!-- Buscar -->
+    <string name="search_title">Buscar</string>
+    <string name="search_placeholder">Canciones, álbumes, artistas, géneros</string>
+    <string name="search_clear">Borrar búsqueda</string>
+    <string name="search_recent">Búsquedas recientes</string>
+    <string name="search_no_results">Sin resultados en tu biblioteca</string>
+    <string name="search_empty_hint">Busca en tu biblioteca local</string>
 </resources>
