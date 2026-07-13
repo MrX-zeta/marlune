@@ -83,6 +83,10 @@ fun PlayerScreen(
         }
     }
 
+    // Desplazamiento horizontal del cambio de pista, compartido por la carátula y el título
+    // para que ambos acompañen el dedo con el mismo offset.
+    val trackOffset = remember { Animatable(0f) }
+
     // Colapso dirigido hacia el mini-player: 0 = completo, 1 = colapsado. La vista sigue el
     // dedo (Animatable) y hace snap al soltar.
     val collapse = remember { Animatable(0f) }
@@ -150,6 +154,7 @@ fun PlayerScreen(
             // Carátula héroe: elemento compartido, nítido, sin efecto de colapso.
             AlbumArt(
                 artwork = uiState.artwork,
+                trackOffset = trackOffset,
                 onPrevious = { onEvent(PlayerEvent.Previous) },
                 onNext = { onEvent(PlayerEvent.Next) },
                 onCollapseDrag = onCollapseDrag,
@@ -160,6 +165,7 @@ fun PlayerScreen(
             Spacer(Modifier.weight(0.5f))
 
             // Título y artista mórfean de posición/tamaño (sharedBounds); el "me gusta" es chrome.
+            // Acompañan el swipe horizontal de pista con el mismo offset que la carátula.
             TrackInfo(
                 title = uiState.title,
                 artist = uiState.artist,
@@ -168,6 +174,7 @@ fun PlayerScreen(
                 titleModifier = titleModifier,
                 artistModifier = artistModifier,
                 likeModifier = chrome,
+                modifier = Modifier.graphicsLayer { translationX = trackOffset.value },
             )
 
             Spacer(Modifier.height(20.dp))

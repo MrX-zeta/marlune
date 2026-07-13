@@ -1,6 +1,7 @@
 package com.luis.marlune.ui.player.components
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
@@ -19,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,14 +41,17 @@ import kotlin.math.abs
 
 private val ArtCorner = 24.dp
 private const val HorizontalCommitFraction = 0.28f
+private const val HorizontalFlingVelocity = 1000f
 
 private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
 
 /**
  * Carátula cuadrada con gestos de EJE RESTRINGIDO (se bloquea la dirección dominante al
  * superar el touch slop, sin movimiento libre en 2D):
- *  - Horizontal → cambia de pista: la carátula sigue el dedo y, al superar el umbral, sale
- *    acelerando y la nueva entra desde el lado opuesto (cross-slide).
+ *  - Horizontal → cambia de pista: derecha = siguiente, izquierda = anterior (preferencia
+ *    explícita). La carátula sigue el dedo vía [trackOffset] (hoisteado para que el título de
+ *    Now Playing acompañe el mismo desplazamiento) y, al superar el umbral de distancia o
+ *    velocidad, sale acelerando y la nueva entra desde el lado opuesto (cross-slide).
  *  - Vertical hacia abajo → minimizar: NO mueve la carátula por libre; reporta el avance a la
  *    pantalla ([onCollapseDrag]/[onCollapseRelease]), que acopla fade/escala/blur a toda la vista
  *    y decide el snap. Es la mitad de colapso de la expansión mini↔full.
@@ -58,6 +61,7 @@ private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
 @Composable
 fun AlbumArt(
     artwork: ImageBitmap?,
+    trackOffset: Animatable<Float, AnimationVector1D>,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onCollapseDrag: (dyPx: Float) -> Unit,
@@ -67,7 +71,7 @@ fun AlbumArt(
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
-    val offsetX = remember { Animatable(0f) }
+    val offsetX = trackOffset
 
     BoxWithConstraints(modifier = modifier.aspectRatio(1f)) {
         val widthPx = with(density) { maxWidth.toPx() }
@@ -139,12 +143,15 @@ fun AlbumArt(
                         when (axis) {
                             DragAxis.Horizontal -> {
                                 val dx = offsetX.value
+                                val vx = velocity.x
                                 when {
-                                    dx <= -horizontalThreshold ->
-                                        scope.launch { crossSlide(offsetX, widthPx, exitToLeft = true, reducedMotion, onNext) }
+                                    // Derecha → siguiente (sale por la derecha; la nueva entra por la izquierda).
+                                    dx >= horizontalThreshold || vx >= HorizontalFlingVelocity ->
+                                        scope.launch { crossSlide(offsetX, widthPx, exitToLeft = false, reducedMotion, onNext) }
 
-                                    dx >= horizontalThreshold ->
-                                        scope.launch { crossSlide(offsetX, widthPx, exitToLeft = false, reducedMotion, onPrevious) }
+                                    // Izquierda → anterior.
+                                    dx <= -horizontalThreshold || vx <= -HorizontalFlingVelocity ->
+                                        scope.launch { crossSlide(offsetX, widthPx, exitToLeft = true, reducedMotion, onPrevious) }
 
                                     else -> scope.launch { offsetX.animateTo(0f, settleSpring()) }
                                 }
