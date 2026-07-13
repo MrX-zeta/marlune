@@ -30,4 +30,16 @@
     <string name="shortcut_playlists">Listas</string>
     <string name="shortcut_albums">Álbumes</string>
     <string name="shortcut_artists">Artistas</string>
+
+    <!-- Biblioteca -->
+    <string name="library_title">Biblioteca</string>
+    <string name="library_filter">Filtrar</string>
+    <string name="library_filter_playlists">Listas</string>
+    <string name="library_filter_albums">Álbumes</string>
+    <string name="library_filter_artists">Artistas</string>
+    <string name="library_filter_songs">Canciones</string>
+    <string name="library_more_options">Más opciones</string>
+    <string name="library_menu_play">Reproducir</string>
+    <string name="library_menu_add_queue">Añadir a la cola</string>
+    <string name="library_menu_add_playlist">Añadir a una lista</string>
 </resources>
