@@ -70,6 +70,7 @@ fun LibraryRow(
             accent = placeholderAccentFor(entry.id),
             icon = coverIcon,
             shape = coverShape,
+            artworkUri = entry.artworkUri,
         )
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {

@@ -1,56 +1,93 @@
 package com.luis.marlune.ui.library
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.luis.marlune.data.repository.LibraryState
+import com.luis.marlune.data.repository.MusicRepository
+import com.luis.marlune.domain.model.Album
+import com.luis.marlune.domain.model.Artist
+import com.luis.marlune.domain.model.Song
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
- * ViewModel de Biblioteca.
- *
- * Sirve datos de ejemplo de la biblioteca LOCAL por categoría; la fuente real (MediaStore /
- * base de datos de listas) llegará en la capa `data/`. La UI observa [uiState] y cambia el
- * filtro con [onFilterSelected].
+ * ViewModel de Biblioteca: proyecta la biblioteca LOCAL real ([MusicRepository]) por categoría.
+ * Álbumes/Artistas/Canciones se derivan de MediaStore; las Listas llegarán con Room (Fase 3), por
+ * lo que hasta entonces esa categoría queda vacía. Ofrece un escaneo manual (pull-to-refresh) como
+ * red de seguridad. Sin mocks, sin red.
  */
-class LibraryViewModel : ViewModel() {
+class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        LibraryUiState(
-            selectedFilter = LibraryFilter.PLAYLISTS,
-            entriesByFilter = sampleData(),
-        ),
-    )
-    val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+    private val selectedFilter = MutableStateFlow(LibraryFilter.SONGS)
+    private val refreshing = MutableStateFlow(false)
 
-    fun onFilterSelected(filter: LibraryFilter) {
-        _uiState.update { it.copy(selectedFilter = filter) }
-    }
-
-    private companion object {
-        fun sampleData(): Map<LibraryFilter, List<LibraryEntry>> = mapOf(
-            LibraryFilter.PLAYLISTS to listOf(
-                LibraryEntry(101L, "Noches de bruma", "18 canciones"),
-                LibraryEntry(102L, "Foco profundo", "42 canciones"),
-                LibraryEntry(103L, "Marea baja", "9 canciones"),
-                LibraryEntry(104L, "Domingo lento", "27 canciones"),
-            ),
-            LibraryFilter.ALBUMS to listOf(
-                LibraryEntry(201L, "Costa dormida", "Maréas"),
-                LibraryEntry(202L, "Vidrio", "Nocta"),
-                LibraryEntry(203L, "Reflejo", "Aiko"),
-            ),
-            LibraryFilter.ARTISTS to listOf(
-                LibraryEntry(301L, "Lún", "12 canciones"),
-                LibraryEntry(302L, "Maréas", "1 álbum"),
-                LibraryEntry(303L, "Nocta", "2 álbumes"),
-            ),
-            LibraryFilter.SONGS to listOf(
-                LibraryEntry(401L, "Bruma", "Lún"),
-                LibraryEntry(402L, "Sal", "Lún"),
-                LibraryEntry(403L, "Costa dormida", "Maréas"),
-                LibraryEntry(404L, "Vidrio", "Nocta"),
+    val uiState: StateFlow<LibraryUiState> =
+        combine(
+            repository.library,
+            repository.albums,
+            repository.artists,
+            selectedFilter,
+            refreshing,
+        ) { library, albums, artists, filter, isRefreshing ->
+            val loading = library is LibraryState.Loading
+            val songs = (library as? LibraryState.Content)?.songs.orEmpty()
+            LibraryUiState(
+                selectedFilter = filter,
+                entriesByFilter = mapOf(
+                    // Listas: vacío hasta Room (Fase 3).
+                    LibraryFilter.PLAYLISTS to emptyList(),
+                    LibraryFilter.ALBUMS to albums.map { it.toEntry() },
+                    LibraryFilter.ARTISTS to artists.map { it.toEntry() },
+                    LibraryFilter.SONGS to songs.map { it.toEntry() },
+                ),
+                isLoading = loading,
+                isRefreshing = isRefreshing,
+            )
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = LibraryUiState(
+                selectedFilter = LibraryFilter.SONGS,
+                entriesByFilter = emptyMap(),
+                isLoading = true,
             ),
         )
+
+    fun onFilterSelected(filter: LibraryFilter) {
+        selectedFilter.value = filter
+    }
+
+    /** Escaneo manual: revisa directorios públicos y re-consulta; muestra "refrescando" mientras. */
+    fun onRefresh() {
+        viewModelScope.launch {
+            refreshing.value = true
+            try {
+                repository.rescan()
+            } finally {
+                refreshing.value = false
+            }
+        }
+    }
+
+    private fun Song.toEntry() = LibraryEntry(id = id, title = title, subtitle = artist, artworkUri = artworkUri)
+
+    private fun Album.toEntry() = LibraryEntry(id = id, title = title, subtitle = artist, artworkUri = artworkUri)
+
+    private fun Artist.toEntry() = LibraryEntry(
+        id = id,
+        title = name,
+        subtitle = "$songCount ${if (songCount == 1) "canción" else "canciones"}",
+        artworkUri = null,
+    )
+
+    companion object {
+        fun factory(repository: MusicRepository): androidx.lifecycle.ViewModelProvider.Factory =
+            viewModelFactory { initializer { LibraryViewModel(repository) } }
     }
 }

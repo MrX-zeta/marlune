@@ -14,11 +14,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FilterList
+import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,7 +36,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
+import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.ui.components.ContextMenuItem
+import com.luis.marlune.ui.components.EmptyState
+import com.luis.marlune.ui.components.LoadingRows
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.library.components.CircleCover
 import com.luis.marlune.ui.library.components.LibraryFilterChips
@@ -47,12 +53,13 @@ import com.luis.marlune.ui.theme.MarluneTheme
 fun LibraryRoute(
     onOpenEntry: (LibraryEntry) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: LibraryViewModel = viewModel(),
+    viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(rememberMusicRepository())),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     LibraryScreen(
         uiState = uiState,
         onFilterSelected = viewModel::onFilterSelected,
+        onRefresh = viewModel::onRefresh,
         onOpenEntry = onOpenEntry,
         modifier = modifier,
     )
@@ -66,10 +73,12 @@ fun LibraryRoute(
  * entre categorías es un fade rápido (150 ms) sin slide. Las filas entran con stagger solo en la
  * primera carga.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibraryScreen(
     uiState: LibraryUiState,
     onFilterSelected: (LibraryFilter) -> Unit,
+    onRefresh: () -> Unit,
     onOpenEntry: (LibraryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -86,17 +95,42 @@ fun LibraryScreen(
                 modifier = Modifier.padding(top = 4.dp, bottom = 12.dp),
             )
 
-            Crossfade(
-                targetState = uiState.selectedFilter,
-                animationSpec = snapOrFade(),
-                label = "libraryContent",
-            ) { filter ->
-                LibraryList(
-                    entries = uiState.entriesByFilter[filter].orEmpty(),
-                    filter = filter,
-                    animateEntrance = firstLoad,
-                    onOpenEntry = onOpenEntry,
-                )
+            // Pull-to-refresh = escaneo manual (red de seguridad); el spinner es el estado "escaneando".
+            PullToRefreshBox(
+                isRefreshing = uiState.isRefreshing,
+                onRefresh = onRefresh,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when {
+                    uiState.isLoading -> LoadingRows(
+                        circularCover = uiState.selectedFilter == LibraryFilter.ARTISTS ||
+                            uiState.selectedFilter == LibraryFilter.PLAYLISTS,
+                    )
+
+                    // Contenedor desplazable para que el pull-to-refresh también funcione en vacío.
+                    uiState.isEmpty -> Column(
+                        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+                    ) {
+                        EmptyState(
+                            icon = Icons.Rounded.LibraryMusic,
+                            title = stringResource(R.string.library_empty_title),
+                            hint = stringResource(R.string.library_empty_hint),
+                        )
+                    }
+
+                    else -> Crossfade(
+                        targetState = uiState.selectedFilter,
+                        animationSpec = snapOrFade(),
+                        label = "libraryContent",
+                    ) { filter ->
+                        LibraryList(
+                            entries = uiState.entriesByFilter[filter].orEmpty(),
+                            filter = filter,
+                            animateEntrance = firstLoad,
+                            onOpenEntry = onOpenEntry,
+                        )
+                    }
+                }
             }
         }
     }
@@ -186,6 +220,7 @@ private fun LibraryScreenPreview() {
                 ),
             ),
             onFilterSelected = {},
+            onRefresh = {},
             onOpenEntry = {},
         )
     }
