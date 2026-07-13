@@ -206,7 +206,8 @@ private fun MarluneShell(
                 // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
                 // la barra, como hasta ahora).
                 MarluneDestination.HOME -> HomeRoute(
-                    onPlayTrack = { onExpandPlayer() },
+                    // El player se conecta a la reproducción real en la Fase 3; por ahora solo expande.
+                    onPlayTrack = { _ -> onExpandPlayer() },
                     onShortcutClick = {},
                     onSeeAllRecent = {},
                     contentPadding = innerPadding,
@@ -218,7 +219,7 @@ private fun MarluneShell(
                 )
 
                 MarluneDestination.SEARCH -> SearchRoute(
-                    onOpenTrack = { onExpandPlayer() },
+                    onOpenTrack = { _ -> onExpandPlayer() },
                     modifier = Modifier.padding(innerPadding),
                 )
             }
