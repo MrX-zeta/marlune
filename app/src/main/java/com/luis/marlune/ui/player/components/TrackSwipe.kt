@@ -15,9 +15,14 @@ enum class TrackSwipeDirection { NEXT, PREVIOUS }
 
 /**
  * A partir del gesto, decide qué COMANDO pedir (siguiente/anterior) combinando el desplazamiento
- * horizontal neto y la velocidad del fling con la misma convención de signo. `null` si no se
- * confirma. OJO: esto elige el comando del swipe; NO decide la dirección de la animación (esa sale
- * del cambio de pista, ver [runTrackSlideAnimation]).
+ * horizontal neto y la velocidad del fling. `null` si no se confirma. OJO: esto elige el comando
+ * del swipe; NO decide la dirección de la animación (esa sale del cambio de pista, ver
+ * [runTrackSlideAnimation]).
+ *
+ * Convención alineada con la animación canónica (estándar): arrastrar a la IZQUIERDA (negativo) =
+ * siguiente —el contenido avanza a la izquierda y la nueva entra por la derecha—; a la DERECHA =
+ * anterior. Así la fase de arrastre (la carátula sigue al dedo) y la confirmación van en la MISMA
+ * dirección, sin inversión.
  */
 fun resolveTrackSwipe(
     netOffsetX: Float,
@@ -28,7 +33,7 @@ fun resolveTrackSwipe(
     val committed = abs(netOffsetX) >= commitDistancePx || abs(velocityX) >= flingVelocity
     if (!committed) return null
     val directional = if (netOffsetX != 0f) netOffsetX else velocityX
-    return if (directional >= 0f) TrackSwipeDirection.NEXT else TrackSwipeDirection.PREVIOUS
+    return if (directional < 0f) TrackSwipeDirection.NEXT else TrackSwipeDirection.PREVIOUS
 }
 
 /**
