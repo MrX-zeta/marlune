@@ -1,6 +1,5 @@
 package com.luis.marlune.ui.player
 
-import android.view.HapticFeedbackConstants
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
@@ -21,17 +19,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.RepeatMode
 import com.luis.marlune.ui.components.Marea
@@ -42,30 +36,13 @@ import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.theme.MarluneTheme
 
 /**
- * Punto de entrada con estado del Reproductor: observa el [PlayerViewModel] y delega en
- * [PlayerScreen] sin estado. `onMinimize` lo resuelve la navegación (mini-player).
- */
-@Composable
-fun PlayerRoute(
-    onMinimize: () -> Unit,
-    modifier: Modifier = Modifier,
-    viewModel: PlayerViewModel = viewModel(),
-) {
-    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    PlayerScreen(
-        uiState = uiState,
-        onEvent = viewModel::onEvent,
-        onMinimize = onMinimize,
-        modifier = modifier,
-    )
-}
-
-/**
  * Pantalla del Reproductor (sin estado).
  *
  * Integra el acento dinámico de la carátula (prompt 1): al cambiar `artwork` se recalcula el
  * acento —play, toggles activos y marea lo siguen vía `colorScheme.primary`— y fondos/texto se
- * mantienen neutros. Haptics ligeros (CLOCK_TICK) en play/pausa y cambio de pista.
+ * mantienen neutros. Los haptics están consolidados aguas arriba (ver `MarluneApp`), no aquí.
+ * `artModifier` recibe el modificador de elemento compartido para que la carátula viaje entre
+ * mini-player y reproductor completo.
  */
 @Composable
 fun PlayerScreen(
@@ -73,6 +50,7 @@ fun PlayerScreen(
     onEvent: (PlayerEvent) -> Unit,
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
+    artModifier: Modifier = Modifier,
 ) {
     val accentController = LocalMarluneAccentController.current
     LaunchedEffect(uiState.artwork) {
@@ -83,13 +61,6 @@ fun PlayerScreen(
             accentController.reset()
         }
     }
-
-    val view = LocalView.current
-    fun tick() = view.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
-
-    val onPlayPause = { tick(); onEvent(PlayerEvent.PlayPause) }
-    val onNext = { tick(); onEvent(PlayerEvent.Next) }
-    val onPrevious = { tick(); onEvent(PlayerEvent.Previous) }
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -104,10 +75,10 @@ fun PlayerScreen(
 
             AlbumArt(
                 artwork = uiState.artwork,
-                onPrevious = onPrevious,
-                onNext = onNext,
+                onPrevious = { onEvent(PlayerEvent.Previous) },
+                onNext = { onEvent(PlayerEvent.Next) },
                 onMinimize = onMinimize,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().then(artModifier),
             )
 
             Spacer(Modifier.weight(0.5f))
@@ -134,9 +105,9 @@ fun PlayerScreen(
                 isPlaying = uiState.isPlaying,
                 isShuffleOn = uiState.isShuffleOn,
                 repeatMode = uiState.repeatMode,
-                onPlayPause = onPlayPause,
-                onPrevious = onPrevious,
-                onNext = onNext,
+                onPlayPause = { onEvent(PlayerEvent.PlayPause) },
+                onPrevious = { onEvent(PlayerEvent.Previous) },
+                onNext = { onEvent(PlayerEvent.Next) },
                 onToggleShuffle = { onEvent(PlayerEvent.ToggleShuffle) },
                 onToggleRepeat = { onEvent(PlayerEvent.ToggleRepeat) },
             )
