@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import com.luis.marlune.ui.home.HomeRoute
+import com.luis.marlune.ui.library.LibraryRoute
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 
@@ -55,6 +56,10 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     onOpenPlayer = {},
                     onPlayTrack = {},
                     onShortcutClick = {},
+                )
+
+                MarluneDestination.LIBRARY -> LibraryRoute(
+                    onOpenEntry = {},
                 )
 
                 else -> {
