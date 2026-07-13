@@ -35,8 +35,9 @@ private const val MareaAmplitudeDp = 2f // amplitud máxima de la onda (dp)
 private val MareaWavelength = 22.dp
 private val MareaStroke = 2.dp
 private val MareaTrackStroke = 1.5.dp
-private val PlayheadRadius = 3.5.dp
-private val PlayheadHalo = 7.dp
+private val PlayheadRadius = 4.5.dp
+private val PlayheadRing = 6.5.dp // anillo de separación (color de fondo)
+private val PlayheadHalo = 10.dp
 private const val MareaLoopMillis = 3500 // periodo del bucle (3–4 s)
 
 /**
@@ -61,6 +62,8 @@ fun Marea(
     modifier: Modifier = Modifier,
     waveColor: Color = MaterialTheme.colorScheme.primary,
     trackColor: Color = MarluneTheme.colors.accentMuted,
+    playheadColor: Color = waveColor,
+    backgroundColor: Color = MaterialTheme.colorScheme.background,
 ) {
     val reducedMotion = LocalReducedMotion.current
     val clampedProgress = progress.coerceIn(0f, 1f)
@@ -135,17 +138,24 @@ fun Marea(
             )
         }
 
-        // 3) Playhead: halo tenue + punto sólido en la frontera.
+        // 3) Playhead: halo + anillo de separación (color de fondo) + punto sólido,
+        //    para que destaque con claridad sobre las ondulaciones de la marea.
         val headY = waveY(playedWidth)
+        val headCenter = Offset(playedWidth, headY)
         drawCircle(
-            color = waveColor.copy(alpha = 0.25f),
+            color = playheadColor.copy(alpha = 0.22f),
             radius = PlayheadHalo.toPx(),
-            center = Offset(playedWidth, headY),
+            center = headCenter,
         )
         drawCircle(
-            color = waveColor,
+            color = backgroundColor,
+            radius = PlayheadRing.toPx(),
+            center = headCenter,
+        )
+        drawCircle(
+            color = playheadColor,
             radius = PlayheadRadius.toPx(),
-            center = Offset(playedWidth, headY),
+            center = headCenter,
         )
     }
 }
