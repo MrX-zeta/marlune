@@ -10,6 +10,7 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
@@ -73,9 +75,12 @@ fun SearchField(
         color = MarluneTheme.colors.surfaceElevated,
     ) {
         Row(
+            // Altura estándar de barra (54 dp), contenido centrado, sin padding vertical:
+            // se lee como una sola barra de un renglón, no como una tarjeta.
             modifier = Modifier
+                .height(54.dp)
                 .border(1.5.dp, borderColor, RoundedCornerShape(16.dp))
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -103,6 +108,9 @@ fun SearchField(
                         text = stringResource(R.string.search_placeholder),
                         style = MarluneTheme.typography.bodyLarge,
                         color = MarluneTheme.colors.textTertiary,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
