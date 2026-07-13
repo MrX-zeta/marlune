@@ -1,5 +1,6 @@
 package com.luis.marlune.ui.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
@@ -63,6 +64,13 @@ fun MarluneApp(modifier: Modifier = Modifier) {
 
     var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
     var playerExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // Retroceso del dispositivo en Now Playing: primero MINIMIZA al mini-player, reutilizando la
+    // MISMA transición de colapso que el swipe abajo y el chevron (`playerExpanded = false` conduce
+    // el `AnimatedContent`). Ya colapsado, se desactiva y el retroceso se propaga normal (salir).
+    BackHandler(enabled = playerExpanded) {
+        playerExpanded = false
+    }
 
     // Haptics en un solo punto: solo play/pausa y cambio de pista, nunca en scroll.
     val hapticTick = rememberHapticTick()
