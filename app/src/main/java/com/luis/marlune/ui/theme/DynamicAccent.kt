@@ -64,6 +64,20 @@ private fun normalizeForDark(color: Color): Color {
     return Color(ColorUtils.HSLToColor(hsl))
 }
 
+/**
+ * Acento estable por pista para teñir miniaturas cuando aún no hay carátula cargada, de modo
+ * que la lista se pueda escanear (evita el "muro monocromo"). Reparte tonos de forma
+ * determinista según la clave y los normaliza a la banda legible sobre fondo oscuro.
+ *
+ * Es el mismo sistema del acento dinámico: SOLO tiñe el acento asociado, nunca la escala
+ * neutra. Sustituible por extracción vía Palette cuando llegue el bitmap real de la carátula.
+ */
+fun placeholderAccentFor(key: Long): Color {
+    val hue = (((key % 12L) + 12L) % 12L) * 30f // 12 tonos repartidos en la rueda
+    val hsl = floatArrayOf(hue, 0.50f, 0.68f)
+    return Color(ColorUtils.HSLToColor(hsl))
+}
+
 /** Controlador de acento disponible para las pantallas (p. ej. el reproductor). */
 val LocalMarluneAccentController = staticCompositionLocalOf { MarluneAccentController() }
 
