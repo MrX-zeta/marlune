@@ -21,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -74,6 +75,11 @@ fun MarluneApp(modifier: Modifier = Modifier) {
 
     var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
     var playerExpanded by rememberSaveable { mutableStateOf(false) }
+
+    // Callbacks de navegación ESTABLES: al cambiar el estado de reproducción (posición, isPlaying)
+    // no cambia su identidad, así que las pestañas (y sus listas) no se recomponen por el playback.
+    val expandPlayer = remember { { playerExpanded = true } }
+    val selectTab = remember { { destination: MarluneDestination -> selected = destination } }
 
     // Retroceso del dispositivo en Now Playing: primero MINIMIZA al mini-player, reutilizando la
     // MISMA transición de colapso que el swipe abajo y el chevron (`playerExpanded = false` conduce
@@ -145,10 +151,10 @@ fun MarluneApp(modifier: Modifier = Modifier) {
             } else {
                 MarluneShell(
                     selected = selected,
-                    onSelect = { selected = it },
+                    onSelect = selectTab,
                     reducedMotion = reducedMotion,
                     playerState = playerState,
-                    onExpandPlayer = { playerExpanded = true },
+                    onExpandPlayer = expandPlayer,
                     onMiniPlayPause = { dispatchPlayer(PlayerEvent.PlayPause) },
                     onMiniNext = { dispatchPlayer(PlayerEvent.Next) },
                     onMiniPrevious = { dispatchPlayer(PlayerEvent.Previous) },
@@ -196,33 +202,55 @@ private fun MarluneShell(
             }
         },
     ) { innerPadding ->
-        Crossfade(
-            targetState = selected,
-            animationSpec = if (reducedMotion) snap() else tween(durationMillis = 150),
-            label = "tabContent",
-        ) { destination ->
-            when (destination) {
-                // Inicio recibe el inset como contentPadding y su lista se desplaza bajo el
-                // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
-                // la barra, como hasta ahora).
-                MarluneDestination.HOME -> HomeRoute(
-                    // El player se conecta a la reproducción real en la Fase 3; por ahora solo expande.
-                    onPlayTrack = { _ -> onExpandPlayer() },
-                    onShortcutClick = {},
-                    onSeeAllRecent = {},
-                    contentPadding = innerPadding,
-                )
+        // Pestañas aisladas del [playerState]: solo dependen de `selected`, `reducedMotion` y el
+        // `onExpandPlayer` ESTABLE, así que un cambio de reproducción no las recompone (ni sus listas).
+        MarluneTabs(
+            selected = selected,
+            reducedMotion = reducedMotion,
+            onExpandPlayer = onExpandPlayer,
+            contentPadding = innerPadding,
+        )
+    }
+}
 
-                MarluneDestination.LIBRARY -> LibraryRoute(
-                    onOpenEntry = {},
-                    modifier = Modifier.padding(innerPadding),
-                )
+/**
+ * Contenido de pestañas. Deliberadamente NO recibe el estado de reproducción: al leerse el playback
+ * solo donde se usa (mini-player), esta subárbol es "saltable" y las listas no se repintan cuando
+ * avanza la posición o cambia isPlaying. El cambio de pestaña sigue siendo un fade rápido (150 ms).
+ */
+@Composable
+private fun MarluneTabs(
+    selected: MarluneDestination,
+    reducedMotion: Boolean,
+    onExpandPlayer: () -> Unit,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues,
+) {
+    Crossfade(
+        targetState = selected,
+        animationSpec = if (reducedMotion) snap() else tween(durationMillis = 150),
+        label = "tabContent",
+    ) { destination ->
+        when (destination) {
+            // Inicio recibe el inset como contentPadding y su lista se desplaza bajo el
+            // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
+            // la barra, como hasta ahora).
+            MarluneDestination.HOME -> HomeRoute(
+                // El player se conecta a la reproducción real en la Fase 3; por ahora solo expande.
+                onPlayTrack = { _ -> onExpandPlayer() },
+                onShortcutClick = {},
+                onSeeAllRecent = {},
+                contentPadding = contentPadding,
+            )
 
-                MarluneDestination.SEARCH -> SearchRoute(
-                    onOpenTrack = { _ -> onExpandPlayer() },
-                    modifier = Modifier.padding(innerPadding),
-                )
-            }
+            MarluneDestination.LIBRARY -> LibraryRoute(
+                onOpenEntry = {},
+                modifier = Modifier.padding(contentPadding),
+            )
+
+            MarluneDestination.SEARCH -> SearchRoute(
+                onOpenTrack = { _ -> onExpandPlayer() },
+                modifier = Modifier.padding(contentPadding),
+            )
         }
     }
 }
