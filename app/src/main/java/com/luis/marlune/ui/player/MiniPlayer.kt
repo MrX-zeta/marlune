@@ -62,6 +62,8 @@ fun MiniPlayer(
     onPlayPause: () -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
+    titleModifier: Modifier = Modifier,
+    artistModifier: Modifier = Modifier,
 ) {
     PressableCard(
         onClick = onExpand,
@@ -90,6 +92,7 @@ fun MiniPlayer(
                     color = MarluneTheme.colors.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = titleModifier,
                 )
                 Text(
                     text = uiState.artist,
@@ -97,6 +100,7 @@ fun MiniPlayer(
                     color = MarluneTheme.colors.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                    modifier = artistModifier,
                 )
             }
             MiniPlayPauseButton(isPlaying = uiState.isPlaying, onClick = onPlayPause)

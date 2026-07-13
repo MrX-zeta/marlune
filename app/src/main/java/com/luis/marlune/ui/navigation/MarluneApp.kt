@@ -2,11 +2,12 @@ package com.luis.marlune.ui.navigation
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -38,6 +39,8 @@ import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 
 private const val ALBUM_ART_KEY = "album-art"
+private const val TITLE_KEY = "player-title"
+private const val ARTIST_KEY = "player-artist"
 
 /**
  * Andamiaje raíz de Marlune.
@@ -81,13 +84,34 @@ fun MarluneApp(modifier: Modifier = Modifier) {
             },
             label = "playerExpand",
         ) { expanded ->
-            // Modificador de elemento compartido para la carátula, con la misma clave en ambos
-            // estados; los límites se interpolan en ≤300 ms.
+            // Asentamiento de "marea": decelerate, sin rebote, ≤300 ms. Común a la carátula
+            // (elemento compartido) y al texto (bounds compartidos).
+            val settle = BoundsTransform { _, _ -> tween(transitionMs, easing = LinearOutSlowInEasing) }
+
+            // Carátula = elemento héroe: viaja y se escala, y permanece nítida (no se difumina).
             val artModifier = with(this@SharedTransitionLayout) {
                 Modifier.sharedElement(
                     sharedContentState = rememberSharedContentState(ALBUM_ART_KEY),
                     animatedVisibilityScope = this@AnimatedContent,
-                    boundsTransform = { _, _ -> tween(transitionMs, easing = FastOutSlowInEasing) },
+                    boundsTransform = settle,
+                )
+            }
+            // Título y artista = bounds compartidos con ScaleToBounds: mórfean tamaño/posición
+            // escalando el contenido (GPU), sin reflow de texto → sin jank.
+            val titleModifier = with(this@SharedTransitionLayout) {
+                Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(TITLE_KEY),
+                    animatedVisibilityScope = this@AnimatedContent,
+                    boundsTransform = settle,
+                    // resizeMode por defecto = ScaleToBounds: escala el contenido (GPU), sin reflow.
+                )
+            }
+            val artistModifier = with(this@SharedTransitionLayout) {
+                Modifier.sharedBounds(
+                    sharedContentState = rememberSharedContentState(ARTIST_KEY),
+                    animatedVisibilityScope = this@AnimatedContent,
+                    boundsTransform = settle,
+                    // resizeMode por defecto = ScaleToBounds: escala el contenido (GPU), sin reflow.
                 )
             }
 
@@ -97,6 +121,8 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     onEvent = dispatchPlayer,
                     onMinimize = { playerExpanded = false },
                     artModifier = artModifier,
+                    titleModifier = titleModifier,
+                    artistModifier = artistModifier,
                 )
             } else {
                 MarluneShell(
@@ -107,6 +133,8 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     onExpandPlayer = { playerExpanded = true },
                     onMiniPlayPause = { dispatchPlayer(PlayerEvent.PlayPause) },
                     miniArtModifier = artModifier,
+                    miniTitleModifier = titleModifier,
+                    miniArtistModifier = artistModifier,
                 )
             }
         }
@@ -123,6 +151,8 @@ private fun MarluneShell(
     onExpandPlayer: () -> Unit,
     onMiniPlayPause: () -> Unit,
     miniArtModifier: Modifier,
+    miniTitleModifier: Modifier,
+    miniArtistModifier: Modifier,
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -134,6 +164,8 @@ private fun MarluneShell(
                     onExpand = onExpandPlayer,
                     onPlayPause = onMiniPlayPause,
                     artModifier = miniArtModifier,
+                    titleModifier = miniTitleModifier,
+                    artistModifier = miniArtistModifier,
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                 )
                 MarluneBottomBar(selected = selected, onSelect = onSelect)

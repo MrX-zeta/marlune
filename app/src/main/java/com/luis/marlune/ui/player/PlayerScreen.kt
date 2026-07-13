@@ -1,6 +1,8 @@
 package com.luis.marlune.ui.player
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -15,7 +17,6 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -64,6 +65,8 @@ fun PlayerScreen(
     onMinimize: () -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
+    titleModifier: Modifier = Modifier,
+    artistModifier: Modifier = Modifier,
 ) {
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
@@ -108,34 +111,43 @@ fun PlayerScreen(
         }
     }
 
-    // Efecto acoplado al progreso, sobre TODA la vista: fade + escala (+ blur en API 31+).
+    // Efecto de colapso acoplado al progreso, SOLO para el fondo y el "chrome" (controles
+    // secundarios): fade + escala (+ blur en API 31+). La carátula y el texto quedan FUERA de
+    // este efecto: se mantienen nítidos y viajan/mórfean con el elemento compartido.
     val progress = collapse.value
-    val viewAlpha = lerp(1f, 0.4f, progress)
-    val viewScale = lerp(1f, 0.92f, progress)
+    val chromeAlpha = lerp(1f, 0.4f, progress)
+    val chromeScale = lerp(1f, 0.92f, progress)
     val blurRadius = lerp(0f, 16f, progress).dp
     val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
-    Surface(
-        modifier = modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                scaleX = viewScale
-                scaleY = viewScale
-                alpha = viewAlpha
-            }
-            .then(if (supportsBlur && progress > 0f) Modifier.blur(blurRadius) else Modifier),
-        color = MaterialTheme.colorScheme.background,
-    ) {
+    val chrome = Modifier
+        .graphicsLayer {
+            alpha = chromeAlpha
+            scaleX = chromeScale
+            scaleY = chromeScale
+        }
+        .then(if (supportsBlur && progress > 0f) Modifier.blur(blurRadius) else Modifier)
+
+    Box(modifier = modifier.fillMaxSize()) {
+        // Fondo neutro que se atenúa con el colapso; la carátula/texto van por encima, nítidos.
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { alpha = chromeAlpha }
+                .background(MaterialTheme.colorScheme.background),
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
                 .padding(horizontal = 24.dp),
         ) {
-            PlayerTopBar(source = uiState.source, onMinimize = onMinimize)
+            PlayerTopBar(source = uiState.source, onMinimize = onMinimize, modifier = chrome)
 
             Spacer(Modifier.weight(0.5f))
 
+            // Carátula héroe: elemento compartido, nítido, sin efecto de colapso.
             AlbumArt(
                 artwork = uiState.artwork,
                 onPrevious = { onEvent(PlayerEvent.Previous) },
@@ -147,24 +159,28 @@ fun PlayerScreen(
 
             Spacer(Modifier.weight(0.5f))
 
+            // Título y artista mórfean de posición/tamaño (sharedBounds); el "me gusta" es chrome.
             TrackInfo(
                 title = uiState.title,
                 artist = uiState.artist,
                 isLiked = uiState.isLiked,
                 onToggleLike = { onEvent(PlayerEvent.ToggleLike) },
+                titleModifier = titleModifier,
+                artistModifier = artistModifier,
+                likeModifier = chrome,
             )
 
             Spacer(Modifier.height(20.dp))
 
-            // La marea usa por defecto colorScheme.background para el anillo del playhead.
-            Marea(
-                progress = uiState.progress,
-                isPlaying = uiState.isPlaying,
-            )
-            TimeRow(positionMs = uiState.positionMs, durationMs = uiState.durationMs)
+            // Marea + tiempos: chrome (se atenúan/difuminan con el colapso).
+            Column(modifier = chrome) {
+                Marea(progress = uiState.progress, isPlaying = uiState.isPlaying)
+                TimeRow(positionMs = uiState.positionMs, durationMs = uiState.durationMs)
+            }
 
             Spacer(Modifier.height(24.dp))
 
+            // Controles: se desvanecen como set (crossfade del AnimatedContent); además, chrome.
             PlayerControls(
                 isPlaying = uiState.isPlaying,
                 isShuffleOn = uiState.isShuffleOn,
@@ -174,6 +190,7 @@ fun PlayerScreen(
                 onNext = { onEvent(PlayerEvent.Next) },
                 onToggleShuffle = { onEvent(PlayerEvent.ToggleShuffle) },
                 onToggleRepeat = { onEvent(PlayerEvent.ToggleRepeat) },
+                modifier = chrome,
             )
 
             Spacer(Modifier.weight(1f))
@@ -224,6 +241,9 @@ private fun TrackInfo(
     artist: String,
     isLiked: Boolean,
     onToggleLike: () -> Unit,
+    titleModifier: Modifier = Modifier,
+    artistModifier: Modifier = Modifier,
+    likeModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
@@ -234,10 +254,10 @@ private fun TrackInfo(
                 color = MarluneTheme.colors.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).then(titleModifier),
             )
-            // "Me gusta" vive en la fila del título, no sobre la carátula.
-            LikeButton(isLiked = isLiked, onClick = onToggleLike)
+            // "Me gusta" vive en la fila del título, no sobre la carátula; es chrome (se desvanece).
+            LikeButton(isLiked = isLiked, onClick = onToggleLike, modifier = likeModifier)
         }
         // Sin indicador de verificación/descarga: la biblioteca es 100 % local.
         Text(
@@ -246,6 +266,7 @@ private fun TrackInfo(
             color = MarluneTheme.colors.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            modifier = artistModifier,
         )
     }
 }
