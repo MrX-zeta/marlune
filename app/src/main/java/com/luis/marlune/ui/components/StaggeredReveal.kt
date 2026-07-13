@@ -25,18 +25,24 @@ private const val RiseDp = 8
  * movimiento reducido (aparece al instante).
  *
  * Solo transforma `graphicsLayer` (alpha/translationY); nunca layout.
+ *
+ * `enabled` se captura en la primera composición: al pasar `false` (p. ej. al cambiar de
+ * pestaña, donde el contenido entra con un fade rápido y sin coreografía por fila) la fila
+ * aparece al instante, y cambiarlo después no perturba una animación en curso.
  */
 @Composable
 fun StaggeredReveal(
     index: Int,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val reducedMotion = LocalReducedMotion.current
-    val reveal = remember { Animatable(if (reducedMotion) 1f else 0f) }
+    val animate = remember { enabled && !reducedMotion }
+    val reveal = remember { Animatable(if (animate) 0f else 1f) }
 
     LaunchedEffect(Unit) {
-        if (!reducedMotion) {
+        if (animate) {
             delay(index.coerceAtMost(MaxStaggerIndex) * StaggerStepMs)
             reveal.animateTo(1f, tween(durationMillis = 220, easing = LinearOutSlowInEasing))
         }
