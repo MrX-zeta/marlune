@@ -25,7 +25,7 @@
     <string name="greeting_afternoon">Buenas tardes</string>
     <string name="greeting_night">Buenas noches</string>
     <string name="home_section_recent">Escuchado hace poco</string>
-    <string name="home_continue_listening">Continuar escuchando</string>
+    <string name="home_see_all">Ver todo</string>
     <string name="shortcut_liked">Me gusta</string>
     <string name="shortcut_playlists">Listas</string>
     <string name="shortcut_albums">Álbumes</string>

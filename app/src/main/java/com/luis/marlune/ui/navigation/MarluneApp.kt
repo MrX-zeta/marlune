@@ -143,22 +143,27 @@ private fun MarluneShell(
         Crossfade(
             targetState = selected,
             animationSpec = if (reducedMotion) snap() else tween(durationMillis = 150),
-            modifier = Modifier.padding(innerPadding),
             label = "tabContent",
         ) { destination ->
             when (destination) {
+                // Inicio recibe el inset como contentPadding y su lista se desplaza bajo el
+                // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
+                // la barra, como hasta ahora).
                 MarluneDestination.HOME -> HomeRoute(
-                    onOpenPlayer = onExpandPlayer,
                     onPlayTrack = { onExpandPlayer() },
                     onShortcutClick = {},
+                    onSeeAllRecent = {},
+                    contentPadding = innerPadding,
                 )
 
                 MarluneDestination.LIBRARY -> LibraryRoute(
                     onOpenEntry = {},
+                    modifier = Modifier.padding(innerPadding),
                 )
 
                 MarluneDestination.SEARCH -> SearchRoute(
                     onOpenTrack = { onExpandPlayer() },
+                    modifier = Modifier.padding(innerPadding),
                 )
             }
         }

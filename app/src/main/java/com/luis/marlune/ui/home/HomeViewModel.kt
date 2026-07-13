@@ -34,11 +34,6 @@ class HomeViewModel : ViewModel() {
 
         return HomeUiState(
             greeting = greetingForHour(LocalTime.now().hour),
-            continueListening = ContinueListeningUi(
-                track = recent.first(),
-                progress = 0.38f,
-                isPlaying = false,
-            ),
             recentTracks = recent,
         )
     }
