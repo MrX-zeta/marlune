@@ -46,7 +46,7 @@ fun SearchResultRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TrackThumbnail(
-            accent = placeholderAccentFor(song.albumId),
+            accent = remember(song.albumId) { placeholderAccentFor(song.albumId) },
             artworkUri = song.artworkUri,
         )
         Spacer(Modifier.width(14.dp))

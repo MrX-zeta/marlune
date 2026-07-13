@@ -112,7 +112,11 @@ private fun SearchResults(
     // LazyColumn: solo compone y pide carátula para los resultados VISIBLES; keys estables por id
     // (un resultado que persiste entre búsquedas no re-anima; los nuevos entran con fade+rise).
     LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
-        itemsIndexed(results, key = { _, song -> song.id }) { index, song ->
+        itemsIndexed(
+            results,
+            key = { _, song -> song.id },
+            contentType = { _, _ -> "searchResultRow" },
+        ) { index, song ->
             StaggeredReveal(index = index, enabled = index < StaggerVisibleCount) {
                 SearchResultRow(song = song, onClick = { onOpenTrack(song) })
             }

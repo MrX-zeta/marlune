@@ -52,6 +52,7 @@ fun LibraryRow(
     modifier: Modifier = Modifier,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val accent = remember(entry.id) { placeholderAccentFor(entry.id) }
 
     Row(
         modifier = modifier
@@ -67,7 +68,7 @@ fun LibraryRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LibraryCover(
-            accent = placeholderAccentFor(entry.id),
+            accent = accent,
             icon = coverIcon,
             shape = coverShape,
             artworkUri = entry.artworkUri,

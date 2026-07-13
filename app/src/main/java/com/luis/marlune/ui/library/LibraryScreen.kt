@@ -148,21 +148,28 @@ private fun LibraryList(
     val isArtist = filter == LibraryFilter.ARTISTS
     val coverShape = if (filter == LibraryFilter.PLAYLISTS || isArtist) CircleCover else RoundedCover
     val coverIcon = coverIconFor(isArtist)
+    // Menú común a todas las filas: se construye una vez, no por fila ni por recomposición.
+    val menuItems = remember { demoMenuItems() }
 
-    // LazyColumn: solo compone (y solo pide carátula a Coil) las filas VISIBLES; keys estables por id.
+    // LazyColumn: solo compone (y solo pide carátula a Coil) las filas VISIBLES; keys estables por id
+    // y `contentType` único para que Compose reutilice slots al cambiar de chip (sin recargar arte).
     // El stagger corre una vez, solo en la primera pantalla visible; el scroll queda instantáneo.
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 24.dp),
     ) {
-        itemsIndexed(entries, key = { _, entry -> entry.id }) { index, entry ->
+        itemsIndexed(
+            entries,
+            key = { _, entry -> entry.id },
+            contentType = { _, _ -> "libraryRow" },
+        ) { index, entry ->
             StaggeredReveal(index = index, enabled = animateEntrance && index < StaggerVisibleCount) {
                 LibraryRow(
                     entry = entry,
                     coverIcon = coverIcon,
                     coverShape = coverShape,
                     onClick = { onOpenEntry(entry) },
-                    menuItems = demoMenuItems(),
+                    menuItems = menuItems,
                 )
             }
         }
@@ -197,7 +204,7 @@ private fun LibraryTopBar() {
     }
 }
 
-@Composable
+// Ítems de ejemplo (acciones reales en fases posteriores); labelRes son constantes, no requiere composición.
 private fun demoMenuItems(): List<ContextMenuItem> = listOf(
     ContextMenuItem(R.string.library_menu_play) {},
     ContextMenuItem(R.string.library_menu_add_queue) {},
