@@ -19,13 +19,24 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
+import android.os.Build
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.RepeatMode
 import com.luis.marlune.ui.components.Marea
@@ -33,7 +44,9 @@ import com.luis.marlune.ui.player.components.AlbumArt
 import com.luis.marlune.ui.player.components.LikeButton
 import com.luis.marlune.ui.player.components.PlayerControls
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
+import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
+import kotlinx.coroutines.launch
 
 /**
  * Pantalla del Reproductor (sin estado).
@@ -52,6 +65,11 @@ fun PlayerScreen(
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
 ) {
+    val reducedMotion = LocalReducedMotion.current
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+
     val accentController = LocalMarluneAccentController.current
     LaunchedEffect(uiState.artwork) {
         val artwork = uiState.artwork
@@ -62,7 +80,52 @@ fun PlayerScreen(
         }
     }
 
-    Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    // Colapso dirigido hacia el mini-player: 0 = completo, 1 = colapsado. La vista sigue el
+    // dedo (Animatable) y hace snap al soltar.
+    val collapse = remember { Animatable(0f) }
+    // Recorrido para llegar a 1 (media pantalla).
+    val collapseDistancePx = with(density) { (configuration.screenHeightDp.dp * 0.5f).toPx() }
+
+    val onCollapseDrag: (Float) -> Unit = { dyPx ->
+        scope.launch {
+            collapse.snapTo((collapse.value + dyPx / collapseDistancePx).coerceIn(0f, 1f))
+        }
+    }
+    val onCollapseRelease: (Float) -> Unit = { velocityY ->
+        // Umbral: >35 % del recorrido o velocidad de descarte suficiente → completar.
+        val commit = collapse.value >= 0.35f || velocityY >= 1200f
+        if (commit) {
+            onMinimize() // la carátula viaja al mini-player (elemento compartido)
+        } else {
+            scope.launch {
+                if (reducedMotion) {
+                    collapse.snapTo(0f)
+                } else {
+                    // Regreso a pantalla completa; spring rápido (se asienta bajo 300 ms).
+                    collapse.animateTo(0f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
+                }
+            }
+        }
+    }
+
+    // Efecto acoplado al progreso, sobre TODA la vista: fade + escala (+ blur en API 31+).
+    val progress = collapse.value
+    val viewAlpha = lerp(1f, 0.4f, progress)
+    val viewScale = lerp(1f, 0.92f, progress)
+    val blurRadius = lerp(0f, 16f, progress).dp
+    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+
+    Surface(
+        modifier = modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = viewScale
+                scaleY = viewScale
+                alpha = viewAlpha
+            }
+            .then(if (supportsBlur && progress > 0f) Modifier.blur(blurRadius) else Modifier),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -77,7 +140,8 @@ fun PlayerScreen(
                 artwork = uiState.artwork,
                 onPrevious = { onEvent(PlayerEvent.Previous) },
                 onNext = { onEvent(PlayerEvent.Next) },
-                onMinimize = onMinimize,
+                onCollapseDrag = onCollapseDrag,
+                onCollapseRelease = onCollapseRelease,
                 modifier = Modifier.fillMaxWidth().then(artModifier),
             )
 
