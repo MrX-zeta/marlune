@@ -247,19 +247,18 @@ fun MiniPlayer(
                     MiniDragAxis.Horizontal -> {
                         val width = size.width.toFloat()
                         // Solo elige QUÉ comando pedir; la animación de confirmación la corre el
-                        // observador de trackTransition (fuente única de dirección).
+                        // observador de trackTransition (fuente única de dirección). Si NO hay pista
+                        // a la que saltar (extremo/cola de 1), la tarjeta REGRESA con spring.
+                        fun settleBack() = scope.launch {
+                            if (reducedMotion) offsetX.snapTo(0f)
+                            else offsetX.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+                        }
                         when (
                             resolveTrackSwipe(dragX, velocity.x, width * TrackCommitFraction, TrackFlingVelocity)
                         ) {
-                            TrackSwipeDirection.NEXT -> onNext()
-                            TrackSwipeDirection.PREVIOUS -> onPrevious()
-                            null -> scope.launch {
-                                if (reducedMotion) {
-                                    offsetX.snapTo(0f)
-                                } else {
-                                    offsetX.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
-                                }
-                            }
+                            TrackSwipeDirection.NEXT -> if (uiState.hasNext) onNext() else settleBack()
+                            TrackSwipeDirection.PREVIOUS -> if (uiState.hasPrevious) onPrevious() else settleBack()
+                            null -> settleBack()
                         }
                     }
 

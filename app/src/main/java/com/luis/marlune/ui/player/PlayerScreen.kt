@@ -198,6 +198,8 @@ fun PlayerScreen(
             AlbumArt(
                 artwork = artwork,
                 trackOffset = trackOffset,
+                canGoPrevious = uiState.hasPrevious,
+                canGoNext = uiState.hasNext,
                 onPrevious = { onEvent(PlayerEvent.Previous) },
                 onNext = { onEvent(PlayerEvent.Next) },
                 onCollapseDrag = onCollapseDrag,

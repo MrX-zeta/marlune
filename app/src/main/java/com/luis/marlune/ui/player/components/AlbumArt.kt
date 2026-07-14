@@ -60,6 +60,8 @@ private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
 fun AlbumArt(
     artwork: ImageBitmap?,
     trackOffset: Animatable<Float, AnimationVector1D>,
+    canGoPrevious: Boolean,
+    canGoNext: Boolean,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onCollapseDrag: (dyPx: Float) -> Unit,
@@ -150,11 +152,15 @@ fun AlbumArt(
                                 // el offset neto + fling. La dirección de la animación de
                                 // confirmación NO se decide aquí: la corre el observador de
                                 // `trackTransition` (fuente única), derivándola del cambio de pista.
+                                // Si NO hay pista a la que saltar (extremo de cola / cola de 1), la
+                                // carátula REGRESA con spring; nunca queda cortada a medias.
                                 when (
                                     resolveTrackSwipe(dragX, velocity.x, horizontalThreshold, HorizontalFlingVelocity)
                                 ) {
-                                    TrackSwipeDirection.NEXT -> onNext()
-                                    TrackSwipeDirection.PREVIOUS -> onPrevious()
+                                    TrackSwipeDirection.NEXT ->
+                                        if (canGoNext) onNext() else scope.launch { offsetX.animateTo(0f, settleSpring()) }
+                                    TrackSwipeDirection.PREVIOUS ->
+                                        if (canGoPrevious) onPrevious() else scope.launch { offsetX.animateTo(0f, settleSpring()) }
                                     null -> scope.launch { offsetX.animateTo(0f, settleSpring()) }
                                 }
                             }
