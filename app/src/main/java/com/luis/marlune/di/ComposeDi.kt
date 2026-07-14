@@ -3,6 +3,7 @@ package com.luis.marlune.di
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import com.luis.marlune.MarluneApplication
+import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.playback.PlaybackRepository
 
@@ -20,4 +21,10 @@ fun rememberMusicRepository(): MusicRepository {
 fun rememberPlaybackRepository(): PlaybackRepository {
     val app = LocalContext.current.applicationContext as MarluneApplication
     return app.container.playbackRepository
+}
+
+@Composable
+fun rememberHistoryRepository(): HistoryRepository {
+    val app = LocalContext.current.applicationContext as MarluneApplication
+    return app.container.historyRepository
 }
