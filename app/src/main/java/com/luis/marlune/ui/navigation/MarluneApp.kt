@@ -5,7 +5,6 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -36,11 +35,26 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberPlaybackRepository
+import com.luis.marlune.ui.detail.AlbumDetailRoute
+import com.luis.marlune.ui.detail.AlbumsRoute
+import com.luis.marlune.ui.detail.ArtistDetailRoute
+import com.luis.marlune.ui.detail.ArtistsRoute
+import com.luis.marlune.ui.detail.HistoryRoute
+import com.luis.marlune.ui.detail.LikedSongsRoute
+import com.luis.marlune.ui.detail.PlaylistsRoute
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.components.rememberHapticTick
 import com.luis.marlune.ui.home.HomeRoute
@@ -116,13 +130,12 @@ fun MarluneApp(modifier: Modifier = Modifier) {
         if (bitmap != null) accentController.updateFromArtwork(bitmap) else accentController.reset()
     }
 
-    var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
+    val navController = rememberNavController()
     var playerExpanded by rememberSaveable { mutableStateOf(false) }
 
-    // Callbacks de navegación ESTABLES: al cambiar el estado de reproducción (posición, isPlaying)
-    // no cambia su identidad, así que las pestañas (y sus listas) no se recomponen por el playback.
+    // Callback ESTABLE: al cambiar el estado de reproducción no cambia su identidad, así que el
+    // contenido (NavHost) no se recompone por el playback (el mini-player sí, donde se usa).
     val expandPlayer = remember { { playerExpanded = true } }
-    val selectTab = remember { { destination: MarluneDestination -> selected = destination } }
 
     // Retroceso del dispositivo en Now Playing: primero MINIMIZA al mini-player, reutilizando la
     // MISMA transición de colapso que el swipe abajo y el chevron (`playerExpanded = false` conduce
@@ -193,8 +206,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                 )
             } else {
                 MarluneShell(
-                    selected = selected,
-                    onSelect = selectTab,
+                    navController = navController,
                     reducedMotion = reducedMotion,
                     playerState = playerState,
                     onExpandPlayer = expandPlayer,
@@ -210,11 +222,10 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     }
 }
 
-/** Estado colapsado: pestañas + mini-player sobre la barra inferior. */
+/** Estado colapsado: NavHost de contenido + mini-player sobre la barra inferior. */
 @Composable
 private fun MarluneShell(
-    selected: MarluneDestination,
-    onSelect: (MarluneDestination) -> Unit,
+    navController: NavHostController,
     reducedMotion: Boolean,
     playerState: com.luis.marlune.ui.player.PlayerUiState,
     onExpandPlayer: () -> Unit,
@@ -251,56 +262,94 @@ private fun MarluneShell(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                     )
                 }
-                MarluneBottomBar(selected = selected, onSelect = onSelect)
+                // La pestaña resaltada se deriva de la ruta actual (los detalles cuelgan de Inicio).
+                val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                MarluneBottomBar(
+                    selected = tabForRoute(currentRoute),
+                    onSelect = { destination -> navController.navigateToTab(destination) },
+                )
             }
         },
     ) { innerPadding ->
-        // Pestañas aisladas del [playerState]: solo dependen de `selected` y `reducedMotion`, así que
-        // un cambio de reproducción no las recompone (ni sus listas). Tocar una canción reproduce por
-        // el PlaybackRepository (dentro de cada Route); no abre Now Playing (el mini-player aparece).
-        MarluneTabs(
-            selected = selected,
-            reducedMotion = reducedMotion,
+        // Contenido navegable. NO recibe el estado de reproducción: es "saltable" y las listas no se
+        // repintan cuando avanza la posición. Tocar una canción reproduce por el PlaybackRepository.
+        MarluneNavHost(
+            navController = navController,
             contentPadding = innerPadding,
         )
     }
 }
 
-/**
- * Contenido de pestañas. Deliberadamente NO recibe el estado de reproducción: al leerse el playback
- * solo donde se usa (mini-player), esta subárbol es "saltable" y las listas no se repintan cuando
- * avanza la posición o cambia isPlaying. El cambio de pestaña sigue siendo un fade rápido (150 ms).
- */
+/** Navega a un destino de primer nivel reutilizando su back stack (patrón estándar de bottom nav). */
+private fun NavHostController.navigateToTab(destination: MarluneDestination) {
+    navigate(destination.route()) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+/** Grafo de navegación del contenido: pestañas de primer nivel + pantallas de detalle. */
 @Composable
-private fun MarluneTabs(
-    selected: MarluneDestination,
-    reducedMotion: Boolean,
+private fun MarluneNavHost(
+    navController: NavHostController,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
 ) {
-    Crossfade(
-        targetState = selected,
-        animationSpec = if (reducedMotion) snap() else tween(durationMillis = 150),
-        label = "tabContent",
-    ) { destination ->
-        when (destination) {
-            // Inicio recibe el inset como contentPadding y su lista se desplaza bajo el
-            // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
-            // la barra, como hasta ahora).
-            MarluneDestination.HOME -> HomeRoute(
-                onShortcutClick = {},
-                onSeeAllRecent = {},
+    NavHost(navController = navController, startDestination = Routes.HOME) {
+        composable(Routes.HOME) {
+            HomeRoute(
+                onShortcutClick = { shortcut -> navController.navigate(shortcut.route()) },
+                onSeeAllRecent = { navController.navigate(Routes.HISTORY) },
                 contentPadding = contentPadding,
             )
-
-            // Recibe el inset como contentPadding (como Inicio): la lista se desplaza bajo el
-            // mini-player flotante y despeja su última fila con el padding inferior dinámico.
-            MarluneDestination.LIBRARY -> LibraryRoute(
-                onOpenEntry = {},
+        }
+        composable(Routes.LIBRARY) {
+            LibraryRoute(onOpenEntry = {}, contentPadding = contentPadding)
+        }
+        composable(Routes.SEARCH) {
+            SearchRoute(modifier = Modifier.padding(contentPadding))
+        }
+        composable(Routes.LIKED) {
+            LikedSongsRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
+        }
+        composable(Routes.HISTORY) {
+            HistoryRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
+        }
+        composable(Routes.ALBUMS) {
+            AlbumsRoute(
                 contentPadding = contentPadding,
+                onBack = navController::popBackStack,
+                onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
             )
-
-            MarluneDestination.SEARCH -> SearchRoute(
-                modifier = Modifier.padding(contentPadding),
+        }
+        composable(Routes.ARTISTS) {
+            ArtistsRoute(
+                contentPadding = contentPadding,
+                onBack = navController::popBackStack,
+                onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
+            )
+        }
+        composable(Routes.PLAYLISTS) {
+            PlaylistsRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
+        }
+        composable(
+            route = Routes.ALBUM_DETAIL,
+            arguments = listOf(navArgument(Routes.ALBUM_ARG) { type = NavType.LongType }),
+        ) { entry ->
+            AlbumDetailRoute(
+                albumId = entry.arguments?.getLong(Routes.ALBUM_ARG) ?: 0L,
+                contentPadding = contentPadding,
+                onBack = navController::popBackStack,
+            )
+        }
+        composable(
+            route = Routes.ARTIST_DETAIL,
+            arguments = listOf(navArgument(Routes.ARTIST_ARG) { type = NavType.LongType }),
+        ) { entry ->
+            ArtistDetailRoute(
+                artistId = entry.arguments?.getLong(Routes.ARTIST_ARG) ?: 0L,
+                contentPadding = contentPadding,
+                onBack = navController::popBackStack,
             )
         }
     }
