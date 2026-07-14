@@ -6,8 +6,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.MusicRepository
+import com.luis.marlune.data.repository.PlaylistRepository
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
+import com.luis.marlune.domain.model.Playlist
 import com.luis.marlune.domain.model.Song
 import com.luis.marlune.playback.PlaybackRepository
 import kotlinx.coroutines.Dispatchers
@@ -32,6 +34,7 @@ import kotlinx.coroutines.launch
 class LibraryViewModel(
     private val repository: MusicRepository,
     private val playback: PlaybackRepository,
+    private val playlists: PlaylistRepository,
 ) : ViewModel() {
 
     private val refreshing = MutableStateFlow(false)
@@ -43,12 +46,16 @@ class LibraryViewModel(
     )
 
     private val entries: StateFlow<Entries> =
-        combine(repository.library, repository.albums, repository.artists) { library, albums, artists ->
+        combine(
+            repository.library,
+            repository.albums,
+            repository.artists,
+            playlists.playlists,
+        ) { library, albums, artists, playlists ->
             val songs = (library as? LibraryState.Content)?.songs.orEmpty()
             Entries(
                 byFilter = mapOf(
-                    // Listas: vacío hasta Room (Fase 3).
-                    LibraryFilter.PLAYLISTS to emptyList(),
+                    LibraryFilter.PLAYLISTS to playlists.map { it.toEntry() },
                     LibraryFilter.ALBUMS to albums.map { it.toEntry() },
                     LibraryFilter.ARTISTS to artists.map { it.toEntry() },
                     LibraryFilter.SONGS to songs.map { it.toEntry() },
@@ -97,6 +104,22 @@ class LibraryViewModel(
         if (index >= 0) playback.playSongs(songs, index)
     }
 
+    // --- Gestión de listas (crear/renombrar/borrar; las canciones van en el siguiente sub-paso). ---
+
+    fun createPlaylist(name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { playlists.create(name) }
+    }
+
+    fun renamePlaylist(id: Long, name: String) {
+        if (name.isBlank()) return
+        viewModelScope.launch { playlists.rename(id, name) }
+    }
+
+    fun deletePlaylist(id: Long) {
+        viewModelScope.launch { playlists.delete(id) }
+    }
+
     /** Escaneo manual: revisa directorios públicos y re-consulta; muestra "refrescando" mientras. */
     fun onRefresh() {
         viewModelScope.launch {
@@ -120,11 +143,19 @@ class LibraryViewModel(
         artworkUri = null,
     )
 
+    private fun Playlist.toEntry() = LibraryEntry(
+        id = id,
+        title = name,
+        subtitle = "$songCount ${if (songCount == 1) "canción" else "canciones"}",
+        artworkUri = null,
+    )
+
     companion object {
         fun factory(
             repository: MusicRepository,
             playback: PlaybackRepository,
+            playlists: PlaylistRepository,
         ): androidx.lifecycle.ViewModelProvider.Factory =
-            viewModelFactory { initializer { LibraryViewModel(repository, playback) } }
+            viewModelFactory { initializer { LibraryViewModel(repository, playback, playlists) } }
     }
 }

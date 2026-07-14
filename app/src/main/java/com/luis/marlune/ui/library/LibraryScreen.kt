@@ -40,6 +40,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
+import com.luis.marlune.di.rememberPlaylistRepository
 import com.luis.marlune.ui.components.ContextMenuItem
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.LoadingRows
@@ -56,10 +57,15 @@ import com.luis.marlune.ui.theme.MarluneTheme
 fun LibraryRoute(
     onOpenAlbum: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
+    onOpenPlaylist: (Long) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel(
-        factory = LibraryViewModel.factory(rememberMusicRepository(), rememberPlaybackRepository()),
+        factory = LibraryViewModel.factory(
+            rememberMusicRepository(),
+            rememberPlaybackRepository(),
+            rememberPlaylistRepository(),
+        ),
     ),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -73,6 +79,10 @@ fun LibraryRoute(
         onPlaySong = viewModel::playSongEntry,
         onOpenAlbum = onOpenAlbum,
         onOpenArtist = onOpenArtist,
+        onOpenPlaylist = onOpenPlaylist,
+        onCreatePlaylist = viewModel::createPlaylist,
+        onRenamePlaylist = viewModel::renamePlaylist,
+        onDeletePlaylist = viewModel::deletePlaylist,
         modifier = modifier,
     )
 }
@@ -96,6 +106,10 @@ fun LibraryScreen(
     onPlaySong: (Long) -> Unit,
     onOpenAlbum: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
+    onOpenPlaylist: (Long) -> Unit,
+    onCreatePlaylist: (String) -> Unit,
+    onRenamePlaylist: (Long, String) -> Unit,
+    onDeletePlaylist: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Selección local: instantánea y desacoplada del ViewModel y de la recomposición del contenido.
@@ -148,13 +162,21 @@ fun LibraryScreen(
             ) {
                 // Carga (solo arranque) = shimmer; el resto SIEMPRE es la misma LazyColumn (contenido
                 // o vacío como item), así el camino caliente nunca desmonta ni recrea la lista.
-                if (uiState.isLoading) {
-                    LoadingRows(
+                when {
+                    uiState.isLoading -> LoadingRows(
                         circularCover = selectedFilter == LibraryFilter.ARTISTS ||
                             selectedFilter == LibraryFilter.PLAYLISTS,
                     )
-                } else {
-                    LibraryList(
+                    // Listas: panel propio (crear + menú Renombrar/Borrar + diálogos).
+                    selectedFilter == LibraryFilter.PLAYLISTS -> PlaylistsPane(
+                        playlists = uiState.entriesFor(LibraryFilter.PLAYLISTS),
+                        bottomPadding = listBottomPadding,
+                        onCreate = onCreatePlaylist,
+                        onRename = onRenamePlaylist,
+                        onDelete = onDeletePlaylist,
+                        onOpen = onOpenPlaylist,
+                    )
+                    else -> LibraryList(
                         entries = uiState.entriesFor(selectedFilter),
                         filter = selectedFilter,
                         listState = listState,
@@ -283,6 +305,10 @@ private fun LibraryScreenPreview() {
             onPlaySong = {},
             onOpenAlbum = {},
             onOpenArtist = {},
+            onOpenPlaylist = {},
+            onCreatePlaylist = {},
+            onRenamePlaylist = { _, _ -> },
+            onDeletePlaylist = {},
         )
     }
 }

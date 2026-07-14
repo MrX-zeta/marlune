@@ -12,7 +12,23 @@
     <string name="liked_empty_hint">Marca canciones con el corazón y aparecerán aquí.</string>
     <string name="history_empty_title">Aún no hay historial</string>
     <string name="playlists_empty_title">Aún no hay listas</string>
-    <string name="playlists_empty_hint">Pronto podrás crear tus propias listas.</string>
+    <string name="playlists_empty_hint">Crea tu primera lista con el botón de arriba.</string>
+
+    <!-- Listas (CRUD) -->
+    <string name="playlist_new_action">Nueva lista de reproducción</string>
+    <string name="playlist_name_hint">Nombre de la lista</string>
+    <string name="playlist_create_title">Nueva lista</string>
+    <string name="playlist_rename_title">Renombrar lista</string>
+    <string name="menu_playlist_rename">Renombrar</string>
+    <string name="menu_playlist_delete">Borrar</string>
+    <string name="playlist_delete_title">¿Borrar esta lista?</string>
+    <string name="playlist_delete_body">No se borrarán canciones ni archivos, solo la lista.</string>
+    <string name="playlist_detail_empty_title">Lista vacía</string>
+    <string name="playlist_detail_empty_hint">Añade canciones (próximamente).</string>
+    <string name="action_create">Crear</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_delete">Borrar</string>
 
     <!-- Reproductor -->
     <string name="player_playing_from">Reproduciendo desde</string>
