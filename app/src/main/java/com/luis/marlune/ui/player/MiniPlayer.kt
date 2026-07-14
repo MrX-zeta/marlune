@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -116,6 +117,10 @@ fun MiniPlayer(
 ) {
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
+    // El pointerInput NO se re-crea al cambiar uiState (su key es reducedMotion), así que capturaría
+    // hasNext/hasPrevious congelados. rememberUpdatedState da el estado ACTUAL dentro del gesto —
+    // clave para el Mix, que arranca en índice 0 (hasPrevious=false) y luego avanza.
+    val latestUiState = rememberUpdatedState(uiState)
     // Arrastre EN VIVO: estado síncrono que el graphicsLayer lee; se escribe DIRECTAMENTE dentro del
     // bucle de punteros (sin corrutina por evento), así la tarjeta sigue al dedo sin retraso de
     // despacho al frame (el delay que solo se notaba en Biblioteca, con el hilo principal cargado).
@@ -303,11 +308,12 @@ fun MiniPlayer(
                         // Solo elige QUÉ comando pedir; la animación de confirmación la corre el
                         // observador de trackTransition (fuente única de dirección). `requested` = si
                         // de verdad se pidió un salto (hay pista a la que ir).
+                        val current = latestUiState.value // estado ACTUAL, no el capturado al crear el gesto
                         val requested = when (
                             resolveTrackSwipe(dragX, velocity.x, width * TrackCommitFraction, TrackFlingVelocity)
                         ) {
-                            TrackSwipeDirection.NEXT -> uiState.hasNext.also { if (it) onNext() }
-                            TrackSwipeDirection.PREVIOUS -> uiState.hasPrevious.also { if (it) onPrevious() }
+                            TrackSwipeDirection.NEXT -> current.hasNext.also { if (it) onNext() }
+                            TrackSwipeDirection.PREVIOUS -> current.hasPrevious.also { if (it) onPrevious() }
                             null -> false
                         }
                         releaseJob.value?.cancel()

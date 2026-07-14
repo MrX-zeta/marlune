@@ -19,6 +19,7 @@ import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,6 +73,11 @@ fun AlbumArt(
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
     val offsetX = trackOffset
+    // El pointerInput no se re-crea al cambiar estos flags (su key es reducedMotion/widthPx), así que
+    // los capturaría congelados. rememberUpdatedState da el valor ACTUAL dentro del gesto (mismo bug
+    // de raíz que el mini con el Mix: la cola arranca en índice 0 → canGoPrevious=false).
+    val latestCanGoNext = rememberUpdatedState(canGoNext)
+    val latestCanGoPrevious = rememberUpdatedState(canGoPrevious)
 
     BoxWithConstraints(modifier = modifier.aspectRatio(1f)) {
         val widthPx = with(density) { maxWidth.toPx() }
@@ -149,8 +155,9 @@ fun AlbumArt(
                                 when (
                                     resolveTrackSwipe(dragX, velocity.x, horizontalThreshold, HorizontalFlingVelocity)
                                 ) {
-                                    TrackSwipeDirection.NEXT -> if (canGoNext) onNext()
-                                    TrackSwipeDirection.PREVIOUS -> if (canGoPrevious) onPrevious()
+                                    // Valores ACTUALES (no los capturados al crear el gesto).
+                                    TrackSwipeDirection.NEXT -> if (latestCanGoNext.value) onNext()
+                                    TrackSwipeDirection.PREVIOUS -> if (latestCanGoPrevious.value) onPrevious()
                                     null -> {}
                                 }
                                 // Red de seguridad: SIEMPRE se asienta a 0 al soltar. Si el cambio de
