@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,6 +30,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.ui.components.rememberHapticTick
 import com.luis.marlune.ui.home.HomeRoute
 import com.luis.marlune.ui.library.LibraryRoute
@@ -36,6 +38,7 @@ import com.luis.marlune.ui.player.MiniPlayer
 import com.luis.marlune.ui.player.PlayerEvent
 import com.luis.marlune.ui.player.PlayerScreen
 import com.luis.marlune.ui.permissions.PermissionRationaleScreen
+import com.luis.marlune.ui.permissions.RequestNotificationPermissionOnce
 import com.luis.marlune.ui.permissions.rememberAudioPermissionState
 import com.luis.marlune.ui.player.PlayerViewModel
 import com.luis.marlune.ui.search.SearchRoute
@@ -67,6 +70,17 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     if (!audioPermission.isGranted) {
         PermissionRationaleScreen(state = audioPermission, modifier = modifier)
         return
+    }
+
+    // Notificación de reproducción (Android 13+); opcional, no bloquea la reproducción.
+    RequestNotificationPermissionOnce()
+
+    // Conecta el MediaController al servicio mientras la UI está viva; lo suelta al salir (la
+    // reproducción sigue en el servicio). La conexión es asíncrona dentro del PlaybackRepository.
+    val playback = rememberPlaybackRepository()
+    DisposableEffect(playback) {
+        playback.connect()
+        onDispose { playback.release() }
     }
 
     val reducedMotion = LocalReducedMotion.current
@@ -235,8 +249,8 @@ private fun MarluneTabs(
             // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
             // la barra, como hasta ahora).
             MarluneDestination.HOME -> HomeRoute(
-                // El player se conecta a la reproducción real en la Fase 3; por ahora solo expande.
-                onPlayTrack = { _ -> onExpandPlayer() },
+                // Reproduce de verdad (Fase 2) y expande el player (aún con datos mock hasta la Fase 3).
+                onExpandPlayer = onExpandPlayer,
                 onShortcutClick = {},
                 onSeeAllRecent = {},
                 contentPadding = contentPadding,
@@ -248,7 +262,7 @@ private fun MarluneTabs(
             )
 
             MarluneDestination.SEARCH -> SearchRoute(
-                onOpenTrack = { _ -> onExpandPlayer() },
+                onExpandPlayer = onExpandPlayer,
                 modifier = Modifier.padding(contentPadding),
             )
         }

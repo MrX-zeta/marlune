@@ -25,7 +25,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
 import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.domain.model.Song
+import com.luis.marlune.playback.PlaybackRepository
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.search.components.RecentSearchChips
 import com.luis.marlune.ui.search.components.SearchField
@@ -35,9 +37,10 @@ import com.luis.marlune.ui.theme.MarluneTheme
 /** Punto de entrada con estado de Buscar. */
 @Composable
 fun SearchRoute(
-    onOpenTrack: (Song) -> Unit,
+    onExpandPlayer: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory(rememberMusicRepository())),
+    playback: PlaybackRepository = rememberPlaybackRepository(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     SearchScreen(
@@ -46,7 +49,11 @@ fun SearchRoute(
         onSubmit = viewModel::onSubmit,
         onClear = viewModel::onClearQuery,
         onRecentSelected = viewModel::onRecentSelected,
-        onOpenTrack = onOpenTrack,
+        // Reproduce la COLA real de resultados (Fase 2); la UI del Player se conecta en la Fase 3.
+        onOpenTrack = { song ->
+            playback.playSongs(uiState.results, uiState.results.indexOf(song))
+            onExpandPlayer()
+        },
         modifier = modifier,
     )
 }

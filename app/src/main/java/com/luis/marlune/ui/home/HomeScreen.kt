@@ -30,7 +30,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.LibraryMusic
 import com.luis.marlune.R
 import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.domain.model.Song
+import com.luis.marlune.playback.PlaybackRepository
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.LoadingRows
 import com.luis.marlune.ui.components.StaggeredReveal
@@ -43,17 +45,22 @@ private const val RecentPreviewCount = 4
 /** Punto de entrada con estado de Inicio. Los callbacks los resolverá la navegación. */
 @Composable
 fun HomeRoute(
-    onPlayTrack: (Song) -> Unit,
+    onExpandPlayer: () -> Unit,
     onShortcutClick: (LibraryShortcut) -> Unit,
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(factory = HomeViewModel.factory(rememberMusicRepository())),
+    playback: PlaybackRepository = rememberPlaybackRepository(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     HomeScreen(
         uiState = uiState,
-        onPlayTrack = onPlayTrack,
+        // Tocar una canción reproduce la COLA real (Fase 2); la UI del Player se conecta en la Fase 3.
+        onPlayTrack = { song ->
+            playback.playSongs(uiState.recent, uiState.recent.indexOf(song))
+            onExpandPlayer()
+        },
         onShortcutClick = onShortcutClick,
         onSeeAllRecent = onSeeAllRecent,
         contentPadding = contentPadding,
