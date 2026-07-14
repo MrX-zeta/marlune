@@ -40,6 +40,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
@@ -187,8 +188,11 @@ fun MiniPlayer(
                         }
                     }
 
-                    // Se consume el eje bloqueado (así no dispara el tap). El tap (sin pasar el
-                    // slop) NO se consume → se resuelve como tap al soltar.
+                    // Se consume el eje bloqueado (así no dispara el tap). El tap (sin pasar el slop)
+                    // no se consume → se resuelve como tap al soltar. Un arrastre que EMPIEZA sobre el
+                    // mini-player lo reclama esta card desde el primer movimiento, para que la lista
+                    // scrolleable de detrás (Biblioteca) no alcance su slop vertical y robe el gesto
+                    // (era la causa del delay/titubeo del swipe solo en Biblioteca).
                     when (axis) {
                         MiniDragAxis.ExpandUp -> {
                             change.consume()
@@ -205,7 +209,13 @@ fun MiniPlayer(
                             scope.launch { offsetX.snapTo(target) }
                         }
 
-                        else -> {}
+                        // Hacia abajo sobre el mini: sin acción, pero se consume (la lista no scrollea).
+                        MiniDragAxis.Down -> change.consume()
+
+                        // Antes de decidir el eje: reclama el movimiento (salvo que un hijo lo tomara,
+                        // p. ej. el botón play) para no competir con el scroll de la lista de detrás.
+                        MiniDragAxis.Undecided ->
+                            if (!consumedByChild && change.positionChange() != Offset.Zero) change.consume()
                     }
                 }
 
