@@ -52,12 +52,12 @@ import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.RepeatMode
+import com.luis.marlune.playback.TrackChange
 import com.luis.marlune.ui.components.Marea
 import com.luis.marlune.ui.player.components.AlbumArt
 import com.luis.marlune.ui.player.components.LikeButton
 import com.luis.marlune.ui.player.components.PlayerControls
 import com.luis.marlune.ui.player.components.runTrackSlideAnimation
-import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.launch
@@ -94,8 +94,8 @@ fun PlayerScreen(
     val context = LocalContext.current
 
     // Carátula real: se carga perezosamente con Coil desde el content URI (caché memoria+disco).
-    // El mismo bitmap alimenta la carátula y el acento dinámico (Palette).
-    val accentController = LocalMarluneAccentController.current
+    // El acento dinámico NO se extrae aquí: lo hace un efecto compartido en MarluneApp al cambiar la
+    // pista actual, para que el color se refresque en todas las vistas sin abrir Now Playing.
     var artwork by remember { mutableStateOf<ImageBitmap?>(null) }
     LaunchedEffect(uiState.artworkUri) {
         val uri = uiState.artworkUri
@@ -106,7 +106,6 @@ fun PlayerScreen(
             (result as? SuccessResult)?.drawable?.toBitmap()
         }.getOrNull()
         artwork = bitmap?.asImageBitmap()
-        if (bitmap != null) accentController.updateFromArtwork(bitmap) else accentController.reset()
     }
 
     // Desplazamiento horizontal del cambio de pista, compartido por la carátula y el título
@@ -117,19 +116,17 @@ fun PlayerScreen(
     val artWidthPx = with(density) { (configuration.screenWidthDp.dp - 48.dp).toPx() }
 
     // ÚNICA fuente de la dirección de la transición de carátula: el cambio de pista del player.
-    // Swipe, botones y auto-avance solo piden el cambio; aquí se anima una vez por cambio,
-    // derivando la dirección de `forward`.
+    // NEXT/PREVIOUS deslizan en su sentido; DIRECT (carga por selección) NO desliza (crossfade).
     var lastHandledTransition by remember { mutableStateOf(uiState.trackTransition.id) }
     LaunchedEffect(uiState.trackTransition.id) {
         val transition = uiState.trackTransition
         if (transition.id != lastHandledTransition) {
             lastHandledTransition = transition.id
-            runTrackSlideAnimation(
-                forward = transition.forward,
-                offsetX = trackOffset,
-                widthPx = artWidthPx,
-                reducedMotion = reducedMotion,
-            )
+            when (transition.kind) {
+                TrackChange.NEXT -> runTrackSlideAnimation(true, trackOffset, artWidthPx, reducedMotion)
+                TrackChange.PREVIOUS -> runTrackSlideAnimation(false, trackOffset, artWidthPx, reducedMotion)
+                TrackChange.DIRECT -> {} // carga directa: sin slide; el contenido aparece/crossfade
+            }
         }
     }
 

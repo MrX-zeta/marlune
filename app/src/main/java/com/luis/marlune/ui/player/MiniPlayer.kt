@@ -50,6 +50,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
+import com.luis.marlune.playback.TrackChange
 import com.luis.marlune.ui.components.PressableCard
 import com.luis.marlune.ui.home.components.TrackThumbnail
 import com.luis.marlune.ui.player.components.TrackSwipeDirection
@@ -109,15 +110,19 @@ fun MiniPlayer(
     val interactionSource = remember { MutableInteractionSource() }
     var cardWidthPx by remember { mutableStateOf(0f) }
 
-    // Misma fuente única que Now Playing: la dirección de la transición sale del cambio de pista
-    // del player (no de quién lo disparó). El swipe solo pide el comando.
+    // Misma fuente única que Now Playing: la dirección sale del cambio de pista del player (reason
+    // de Media3). NEXT/PREVIOUS deslizan; DIRECT (carga por selección) NO desliza (crossfade).
     var lastHandledTransition by remember { mutableStateOf(uiState.trackTransition.id) }
     LaunchedEffect(uiState.trackTransition.id) {
         val transition = uiState.trackTransition
         if (transition.id != lastHandledTransition) {
             lastHandledTransition = transition.id
             if (cardWidthPx > 0f) {
-                runTrackSlideAnimation(transition.forward, offsetX, cardWidthPx, reducedMotion)
+                when (transition.kind) {
+                    TrackChange.NEXT -> runTrackSlideAnimation(true, offsetX, cardWidthPx, reducedMotion)
+                    TrackChange.PREVIOUS -> runTrackSlideAnimation(false, offsetX, cardWidthPx, reducedMotion)
+                    TrackChange.DIRECT -> {} // carga directa: sin slide
+                }
             }
         }
     }
