@@ -37,7 +37,6 @@ import com.luis.marlune.ui.theme.MarluneTheme
 /** Punto de entrada con estado de Buscar. */
 @Composable
 fun SearchRoute(
-    onExpandPlayer: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SearchViewModel = viewModel(factory = SearchViewModel.factory(rememberMusicRepository())),
     playback: PlaybackRepository = rememberPlaybackRepository(),
@@ -49,10 +48,9 @@ fun SearchRoute(
         onSubmit = viewModel::onSubmit,
         onClear = viewModel::onClearQuery,
         onRecentSelected = viewModel::onRecentSelected,
-        // Reproduce la COLA real de resultados (Fase 2); la UI del Player se conecta en la Fase 3.
+        // Reproduce la COLA real de resultados; el mini-player aparece con esa pista al sonar.
         onOpenTrack = { song ->
             playback.playSongs(uiState.results, uiState.results.indexOf(song))
-            onExpandPlayer()
         },
         modifier = modifier,
     )

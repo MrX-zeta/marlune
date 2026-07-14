@@ -9,6 +9,7 @@ import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
 import com.luis.marlune.domain.model.Song
+import com.luis.marlune.playback.PlaybackRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,7 +27,10 @@ import kotlinx.coroutines.launch
  * Cambiar de chip solo cambia QUÉ lista cacheada se muestra: no re-consulta MediaStore ni re-agrupa,
  * y no toca el hilo principal. Las Listas llegarán con Room (Fase 3). Sin mocks, sin red.
  */
-class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
+class LibraryViewModel(
+    private val repository: MusicRepository,
+    private val playback: PlaybackRepository,
+) : ViewModel() {
 
     private val refreshing = MutableStateFlow(false)
 
@@ -71,6 +75,16 @@ class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
             initialValue = LibraryUiState(entriesByFilter = emptyMap(), isLoading = true),
         )
 
+    /**
+     * Reproduce la canción tocada en la pestaña "Canciones": arma la COLA con toda la biblioteca (en
+     * el mismo orden mostrado) y empieza en su posición. Lectura directa de la caché ya cargada.
+     */
+    fun playSongEntry(entryId: Long) {
+        val songs = (repository.library.value as? LibraryState.Content)?.songs ?: return
+        val index = songs.indexOfFirst { it.id == entryId }
+        if (index >= 0) playback.playSongs(songs, index)
+    }
+
     /** Escaneo manual: revisa directorios públicos y re-consulta; muestra "refrescando" mientras. */
     fun onRefresh() {
         viewModelScope.launch {
@@ -95,7 +109,10 @@ class LibraryViewModel(private val repository: MusicRepository) : ViewModel() {
     )
 
     companion object {
-        fun factory(repository: MusicRepository): androidx.lifecycle.ViewModelProvider.Factory =
-            viewModelFactory { initializer { LibraryViewModel(repository) } }
+        fun factory(
+            repository: MusicRepository,
+            playback: PlaybackRepository,
+        ): androidx.lifecycle.ViewModelProvider.Factory =
+            viewModelFactory { initializer { LibraryViewModel(repository, playback) } }
     }
 }

@@ -37,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
 import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.ui.components.ContextMenuItem
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.LoadingRows
@@ -53,12 +54,16 @@ import com.luis.marlune.ui.theme.MarluneTheme
 fun LibraryRoute(
     onOpenEntry: (LibraryEntry) -> Unit,
     modifier: Modifier = Modifier,
-    viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.factory(rememberMusicRepository())),
+    viewModel: LibraryViewModel = viewModel(
+        factory = LibraryViewModel.factory(rememberMusicRepository(), rememberPlaybackRepository()),
+    ),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     LibraryScreen(
         uiState = uiState,
         onRefresh = viewModel::onRefresh,
+        // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
+        onPlaySong = viewModel::playSongEntry,
         onOpenEntry = onOpenEntry,
         modifier = modifier,
     )
@@ -78,11 +83,17 @@ fun LibraryRoute(
 fun LibraryScreen(
     uiState: LibraryUiState,
     onRefresh: () -> Unit,
+    onPlaySong: (Long) -> Unit,
     onOpenEntry: (LibraryEntry) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Selección local: instantánea y desacoplada del ViewModel y de la recomposición del contenido.
     var selectedFilter by rememberSaveable { mutableStateOf(LibraryFilter.SONGS) }
+
+    // En "Canciones" el toque reproduce; en Álbumes/Artistas abre la entrada (detalle, más adelante).
+    val onEntryClick: (LibraryEntry) -> Unit = { entry ->
+        if (selectedFilter == LibraryFilter.SONGS) onPlaySong(entry.id) else onOpenEntry(entry)
+    }
 
     // El stagger de filas corre una sola vez (primera carga), no en cada cambio de filtro.
     var firstLoad by remember { mutableStateOf(true) }
@@ -122,7 +133,7 @@ fun LibraryScreen(
                         filter = selectedFilter,
                         listState = listState,
                         animateEntrance = firstLoad,
-                        onOpenEntry = onOpenEntry,
+                        onEntryClick = onEntryClick,
                     )
                 }
             }
@@ -136,7 +147,7 @@ private fun LibraryList(
     filter: LibraryFilter,
     listState: LazyListState,
     animateEntrance: Boolean,
-    onOpenEntry: (LibraryEntry) -> Unit,
+    onEntryClick: (LibraryEntry) -> Unit,
 ) {
     val isArtist = filter == LibraryFilter.ARTISTS
     val coverShape = if (filter == LibraryFilter.PLAYLISTS || isArtist) CircleCover else RoundedCover
@@ -172,7 +183,7 @@ private fun LibraryList(
                         entry = entry,
                         coverIcon = coverIcon,
                         coverShape = coverShape,
-                        onClick = { onOpenEntry(entry) },
+                        onClick = { onEntryClick(entry) },
                         menuItems = menuItems,
                     )
                 }
@@ -231,6 +242,7 @@ private fun LibraryScreenPreview() {
                 ),
             ),
             onRefresh = {},
+            onPlaySong = {},
             onOpenEntry = {},
         )
     }

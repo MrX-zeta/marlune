@@ -45,7 +45,6 @@ private const val RecentPreviewCount = 4
 /** Punto de entrada con estado de Inicio. Los callbacks los resolverá la navegación. */
 @Composable
 fun HomeRoute(
-    onExpandPlayer: () -> Unit,
     onShortcutClick: (LibraryShortcut) -> Unit,
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
@@ -56,10 +55,9 @@ fun HomeRoute(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     HomeScreen(
         uiState = uiState,
-        // Tocar una canción reproduce la COLA real (Fase 2); la UI del Player se conecta en la Fase 3.
+        // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
         onPlayTrack = { song ->
             playback.playSongs(uiState.recent, uiState.recent.indexOf(song))
-            onExpandPlayer()
         },
         onShortcutClick = onShortcutClick,
         onSeeAllRecent = onSeeAllRecent,
