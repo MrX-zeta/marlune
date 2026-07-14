@@ -139,13 +139,6 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     // contenido (NavHost) no se recompone por el playback (el mini-player sí, donde se usa).
     val expandPlayer = remember { { playerExpanded = true } }
 
-    // Retroceso del dispositivo en Now Playing: primero MINIMIZA al mini-player, reutilizando la
-    // MISMA transición de colapso que el swipe abajo y el chevron (`playerExpanded = false` conduce
-    // el `AnimatedContent`). Ya colapsado, se desactiva y el retroceso se propaga normal (salir).
-    BackHandler(enabled = playerExpanded) {
-        playerExpanded = false
-    }
-
     // Haptics en un solo punto: solo play/pausa y cambio de pista, nunca en scroll.
     val hapticTick = rememberHapticTick()
     val dispatchPlayer: (PlayerEvent) -> Unit = { event ->
@@ -198,6 +191,11 @@ fun MarluneApp(modifier: Modifier = Modifier) {
             }
 
             if (expanded) {
+                // Retroceso: minimiza Now Playing (misma transición de colapso: `playerExpanded=false`
+                // conduce el AnimatedContent). Depende de que esté EXPANDIDO, no del estado de
+                // reproducción. Se registra DENTRO de la rama expandida (después que el NavHost del
+                // shell) para tener prioridad sobre él; ya minimizado, el retroceso se propaga normal.
+                BackHandler(enabled = playerExpanded) { playerExpanded = false }
                 PlayerScreen(
                     uiState = playerState,
                     onEvent = dispatchPlayer,
