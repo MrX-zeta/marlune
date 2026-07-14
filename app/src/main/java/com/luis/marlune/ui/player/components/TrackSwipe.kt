@@ -8,8 +8,8 @@ import androidx.compose.animation.core.tween
 import kotlin.math.abs
 
 /**
- * Dirección del cambio de pista. Convención de producto ÚNICA: derecha = siguiente,
- * izquierda = anterior.
+ * Dirección del cambio de pista. Convención de producto ÚNICA (estándar tipo Spotify):
+ * izquierda = siguiente, derecha = anterior.
  */
 enum class TrackSwipeDirection { NEXT, PREVIOUS }
 
@@ -19,9 +19,9 @@ enum class TrackSwipeDirection { NEXT, PREVIOUS }
  * del swipe; NO decide la dirección de la animación (esa sale del cambio de pista, ver
  * [runTrackSlideAnimation]).
  *
- * Convención de producto: DERECHA (positivo) = siguiente; IZQUIERDA (negativo) = anterior. La
- * carátula sigue al dedo y la confirmación continúa en la MISMA dirección (ver el `exitSign` de
- * [runTrackSlideAnimation]), sin inversión.
+ * Convención de producto (estándar tipo Spotify): IZQUIERDA (negativo) = siguiente; DERECHA
+ * (positivo) = anterior. La carátula sigue al dedo y la confirmación continúa en la MISMA dirección
+ * (ver el `exitSign` de [runTrackSlideAnimation]), sin inversión.
  */
 fun resolveTrackSwipe(
     netOffsetX: Float,
@@ -32,7 +32,7 @@ fun resolveTrackSwipe(
     val committed = abs(netOffsetX) >= commitDistancePx || abs(velocityX) >= flingVelocity
     if (!committed) return null
     val directional = if (netOffsetX != 0f) netOffsetX else velocityX
-    return if (directional > 0f) TrackSwipeDirection.NEXT else TrackSwipeDirection.PREVIOUS
+    return if (directional > 0f) TrackSwipeDirection.PREVIOUS else TrackSwipeDirection.NEXT
 }
 
 /**
@@ -53,9 +53,9 @@ suspend fun runTrackSlideAnimation(
     reducedMotion: Boolean,
 ) {
     // ÚNICO punto que mapea dirección de cambio de pista → dirección de animación, alineado con el
-    // swipe (derecha = siguiente): siguiente → la actual sale por la DERECHA (+) y la nueva entra
-    // por la izquierda; anterior → al revés.
-    val exitSign = if (forward) 1f else -1f
+    // swipe (estándar: izquierda = siguiente): siguiente → la actual sale por la IZQUIERDA (-) y la
+    // nueva entra por la derecha; anterior → al revés.
+    val exitSign = if (forward) -1f else 1f
     if (reducedMotion) {
         offsetX.snapTo(0f)
         return
