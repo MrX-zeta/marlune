@@ -28,11 +28,8 @@ class PlayerViewModel(private val playback: PlaybackRepository) : ViewModel() {
 
     private val likedIds = MutableStateFlow<Set<String>>(emptySet())
 
-    // Estado para derivar la dirección del cambio de pista entre emisiones sucesivas.
+    // Solo para saber sobre qué pista opera "me gusta" (la dirección de animación viene del repo).
     private var lastMediaId: String? = null
-    private var lastIndex: Int = 0
-    private var transitionCounter: Int = 0
-    private var transition: TrackTransition = TrackTransition()
 
     val uiState: StateFlow<PlayerUiState> =
         combine(playback.state, likedIds) { state, liked -> state.toUiState(liked) }
@@ -60,14 +57,7 @@ class PlayerViewModel(private val playback: PlaybackRepository) : ViewModel() {
             lastMediaId = null
             return PlayerUiState.Empty
         }
-        if (mediaId != lastMediaId) {
-            if (lastMediaId != null) {
-                transitionCounter++
-                transition = TrackTransition(transitionCounter, forwardFrom(lastIndex, currentIndex, queueSize))
-            }
-            lastMediaId = mediaId
-            lastIndex = currentIndex
-        }
+        lastMediaId = mediaId
         return PlayerUiState(
             hasTrack = true,
             title = title,
@@ -80,16 +70,9 @@ class PlayerViewModel(private val playback: PlaybackRepository) : ViewModel() {
             repeatMode = repeatMode,
             isLiked = mediaId != null && mediaId in liked,
             artworkUri = artworkUri,
-            trackTransition = transition,
+            // La dirección de la animación es la única fuente del repositorio (reason de Media3).
+            trackTransition = TrackTransition(transitionId, transition),
         )
-    }
-
-    /** Dirección canónica: avanzó (incluye el salto de la última a la primera al auto-avanzar). */
-    private fun forwardFrom(old: Int, new: Int, size: Int): Boolean = when {
-        size <= 1 -> true
-        old == size - 1 && new == 0 -> true // wrap hacia adelante (auto-avance/repeat all)
-        old == 0 && new == size - 1 -> false // wrap hacia atrás (anterior desde la primera)
-        else -> new >= old
     }
 
     companion object {

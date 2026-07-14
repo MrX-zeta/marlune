@@ -3,15 +3,16 @@ package com.luis.marlune.ui.player
 import android.net.Uri
 import androidx.compose.runtime.Immutable
 import com.luis.marlune.domain.model.RepeatMode
+import com.luis.marlune.playback.TrackChange
 
 /**
  * Señal del ÚLTIMO cambio de pista, leída del player. [id] incrementa en cada cambio (para
- * detectarlo una sola vez) y [forward] indica si fue "siguiente" (true) o "anterior" (false).
- * Es la ÚNICA fuente de la que deriva la dirección de la transición de carátula, sin importar
- * quién la disparó (swipe, botón, notificación, auto-avance).
+ * detectarlo una sola vez) y [kind] dice si fue siguiente, anterior o una CARGA DIRECTA (cola nueva
+ * por selección). Es la ÚNICA fuente de la que deriva la animación de carátula: DIRECT no desliza
+ * (crossfade/aparición); NEXT/PREVIOUS sí, en su sentido. Deriva del `reason` de Media3.
  */
 @Immutable
-data class TrackTransition(val id: Int = 0, val forward: Boolean = true)
+data class TrackTransition(val id: Int = 0, val kind: TrackChange = TrackChange.DIRECT)
 
 /**
  * Estado inmutable de la pantalla del Reproductor, derivado de la reproducción REAL

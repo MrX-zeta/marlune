@@ -25,8 +25,18 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /**
+ * Naturaleza del último cambio de pista, para que la UI elija la animación:
+ * [NEXT]/[PREVIOUS] → slide direccional dentro de la cola; [DIRECT] → carga directa (cola nueva
+ * por selección), sin slide: solo crossfade/aparición.
+ */
+enum class TrackChange { DIRECT, NEXT, PREVIOUS }
+
+/**
  * Estado de reproducción REAL, leído del `MediaController`. `hasItem = false` significa que no hay
  * nada en la cola (estado vacío: la UI no muestra una pista falsa). Sin datos mock.
+ *
+ * [transitionId] incrementa en cada cambio de pista (para reaccionar una sola vez) y [transition]
+ * dice de qué tipo fue, derivado del `reason` de Media3 (fuente ÚNICA de dirección de animación).
  */
 data class PlaybackState(
     val hasItem: Boolean = false,
@@ -41,6 +51,8 @@ data class PlaybackState(
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val currentIndex: Int = 0,
     val queueSize: Int = 0,
+    val transitionId: Int = 0,
+    val transition: TrackChange = TrackChange.DIRECT,
 )
 
 /**
@@ -68,7 +80,29 @@ class PlaybackRepository(context: Context) {
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
 
+    // Naturaleza del último cambio de pista, derivada del `reason` de Media3 (fuente única).
+    private var transitionId = 0
+    private var transitionKind = TrackChange.DIRECT
+    private var lastTransitionIndex = 0
+
     private val listener = object : Player.Listener {
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val c = controller ?: return
+            val newIndex = c.currentMediaItemIndex
+            transitionKind = when (reason) {
+                // Cola armada/reemplazada por una selección directa: sin slide (crossfade/aparición).
+                Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> TrackChange.DIRECT
+                Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> TrackChange.NEXT // auto-avance al terminar
+                Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> // skip/prev/swipe: dirección por índice
+                    if (forwardFrom(lastTransitionIndex, newIndex, c.mediaItemCount)) TrackChange.NEXT
+                    else TrackChange.PREVIOUS
+                else -> TrackChange.DIRECT // REPEAT (repetir una): misma pista, sin slide
+            }
+            lastTransitionIndex = newIndex
+            transitionId++
+            // El estado se re-emite en onEvents (que agrupa esta transición); ahí se incluye.
+        }
+
         override fun onEvents(player: Player, events: Player.Events) = refresh()
     }
 
@@ -155,8 +189,18 @@ class PlaybackRepository(context: Context) {
             repeatMode = c.repeatMode.toRepeatMode(),
             currentIndex = c.currentMediaItemIndex,
             queueSize = c.mediaItemCount,
+            transitionId = transitionId,
+            transition = transitionKind,
         )
         syncTicker(c.isPlaying)
+    }
+
+    /** Dirección canónica de un salto por índice (incluye el wrap última→primera al auto-avanzar). */
+    private fun forwardFrom(old: Int, new: Int, size: Int): Boolean = when {
+        size <= 1 -> true
+        old == size - 1 && new == 0 -> true
+        old == 0 && new == size - 1 -> false
+        else -> new >= old
     }
 
     /** Ticker de posición: solo corre mientras suena (nada de polling en reposo); en el hilo principal. */
