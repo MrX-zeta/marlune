@@ -2,9 +2,12 @@ package com.luis.marlune.ui.navigation
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
@@ -84,7 +87,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     }
 
     val reducedMotion = LocalReducedMotion.current
-    val playerViewModel: PlayerViewModel = viewModel()
+    val playerViewModel: PlayerViewModel = viewModel(factory = PlayerViewModel.factory(playback))
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
 
     var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
@@ -200,28 +203,38 @@ private fun MarluneShell(
         modifier = Modifier.fillMaxSize(),
         bottomBar = {
             Column {
-                // Tarjeta flotante: inset lateral + margen inferior para despegarla de la barra.
-                MiniPlayer(
-                    uiState = playerState,
-                    onExpand = onExpandPlayer,
-                    onPlayPause = onMiniPlayPause,
-                    onNext = onMiniNext,
-                    onPrevious = onMiniPrevious,
-                    artModifier = miniArtModifier,
-                    titleModifier = miniTitleModifier,
-                    artistModifier = miniArtistModifier,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                )
+                // Mini-player solo cuando hay pista real: en vacío se OCULTA (nada de canción falsa)
+                // y aparece con fade+slide al empezar a sonar. La reproducción vive en el servicio.
+                AnimatedVisibility(
+                    visible = playerState.hasTrack,
+                    enter = if (reducedMotion) fadeIn(snap()) else
+                        fadeIn(tween(220)) + slideInVertically(tween(220)) { it / 2 },
+                    exit = if (reducedMotion) fadeOut(snap()) else
+                        fadeOut(tween(180)) + slideOutVertically(tween(180)) { it / 2 },
+                ) {
+                    // Tarjeta flotante: inset lateral + margen inferior para despegarla de la barra.
+                    MiniPlayer(
+                        uiState = playerState,
+                        onExpand = onExpandPlayer,
+                        onPlayPause = onMiniPlayPause,
+                        onNext = onMiniNext,
+                        onPrevious = onMiniPrevious,
+                        artModifier = miniArtModifier,
+                        titleModifier = miniTitleModifier,
+                        artistModifier = miniArtistModifier,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                    )
+                }
                 MarluneBottomBar(selected = selected, onSelect = onSelect)
             }
         },
     ) { innerPadding ->
-        // Pestañas aisladas del [playerState]: solo dependen de `selected`, `reducedMotion` y el
-        // `onExpandPlayer` ESTABLE, así que un cambio de reproducción no las recompone (ni sus listas).
+        // Pestañas aisladas del [playerState]: solo dependen de `selected` y `reducedMotion`, así que
+        // un cambio de reproducción no las recompone (ni sus listas). Tocar una canción reproduce por
+        // el PlaybackRepository (dentro de cada Route); no abre Now Playing (el mini-player aparece).
         MarluneTabs(
             selected = selected,
             reducedMotion = reducedMotion,
-            onExpandPlayer = onExpandPlayer,
             contentPadding = innerPadding,
         )
     }
@@ -236,7 +249,6 @@ private fun MarluneShell(
 private fun MarluneTabs(
     selected: MarluneDestination,
     reducedMotion: Boolean,
-    onExpandPlayer: () -> Unit,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
 ) {
     Crossfade(
@@ -249,8 +261,6 @@ private fun MarluneTabs(
             // mini-player flotante; Biblioteca y Buscar lo consumen como margen (quedan sobre
             // la barra, como hasta ahora).
             MarluneDestination.HOME -> HomeRoute(
-                // Reproduce de verdad (Fase 2) y expande el player (aún con datos mock hasta la Fase 3).
-                onExpandPlayer = onExpandPlayer,
                 onShortcutClick = {},
                 onSeeAllRecent = {},
                 contentPadding = contentPadding,
@@ -262,7 +272,6 @@ private fun MarluneTabs(
             )
 
             MarluneDestination.SEARCH -> SearchRoute(
-                onExpandPlayer = onExpandPlayer,
                 modifier = Modifier.padding(contentPadding),
             )
         }
