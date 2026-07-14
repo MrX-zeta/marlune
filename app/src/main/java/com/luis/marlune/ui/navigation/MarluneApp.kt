@@ -290,9 +290,11 @@ private fun MarluneTabs(
                 contentPadding = contentPadding,
             )
 
+            // Recibe el inset como contentPadding (como Inicio): la lista se desplaza bajo el
+            // mini-player flotante y despeja su última fila con el padding inferior dinámico.
             MarluneDestination.LIBRARY -> LibraryRoute(
                 onOpenEntry = {},
-                modifier = Modifier.padding(contentPadding),
+                contentPadding = contentPadding,
             )
 
             MarluneDestination.SEARCH -> SearchRoute(

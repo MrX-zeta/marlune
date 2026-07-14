@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -53,6 +54,7 @@ import com.luis.marlune.ui.theme.MarluneTheme
 @Composable
 fun LibraryRoute(
     onOpenEntry: (LibraryEntry) -> Unit,
+    contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel(
         factory = LibraryViewModel.factory(rememberMusicRepository(), rememberPlaybackRepository()),
@@ -63,6 +65,7 @@ fun LibraryRoute(
     LibraryScreen(
         uiState = uiState,
         nowPlaying = nowPlaying,
+        contentPadding = contentPadding,
         onRefresh = viewModel::onRefresh,
         // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
         onPlaySong = viewModel::playSongEntry,
@@ -85,6 +88,7 @@ fun LibraryRoute(
 fun LibraryScreen(
     uiState: LibraryUiState,
     nowPlaying: NowPlayingUi,
+    contentPadding: PaddingValues,
     onRefresh: () -> Unit,
     onPlaySong: (Long) -> Unit,
     onOpenEntry: (LibraryEntry) -> Unit,
@@ -108,8 +112,17 @@ fun LibraryScreen(
     // Al cambiar de categoría se vuelve arriba (evita arrastrar el offset de una lista a otra). O(1).
     LaunchedEffect(selectedFilter) { listState.scrollToItem(0) }
 
+    // Padding inferior dinámico: el alto real del mini-player (cuando hay pista) + la barra vía el
+    // inset del Scaffold, + un margen, para que la última canción suba por encima del mini-player.
+    val listBottomPadding = contentPadding.calculateBottomPadding() + 12.dp
+
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = contentPadding.calculateTopPadding())
+                .padding(horizontal = 20.dp),
+        ) {
             LibraryTopBar()
             LibraryFilterChips(
                 selected = selectedFilter,
@@ -137,6 +150,7 @@ fun LibraryScreen(
                         listState = listState,
                         animateEntrance = firstLoad,
                         nowPlaying = nowPlaying,
+                        bottomPadding = listBottomPadding,
                         onEntryClick = onEntryClick,
                     )
                 }
@@ -152,6 +166,7 @@ private fun LibraryList(
     listState: LazyListState,
     animateEntrance: Boolean,
     nowPlaying: NowPlayingUi,
+    bottomPadding: Dp,
     onEntryClick: (LibraryEntry) -> Unit,
 ) {
     // Solo se resalta en "Canciones" (los ids de álbum/artista viven en otro espacio de ids).
@@ -169,7 +184,7 @@ private fun LibraryList(
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 24.dp),
+        contentPadding = PaddingValues(bottom = bottomPadding),
     ) {
         if (entries.isEmpty()) {
             item(key = "library-empty", contentType = "empty") {
@@ -201,8 +216,9 @@ private fun LibraryList(
     }
 }
 
-/** Filas que reciben la entrada escalonada en la primera pantalla (grupos de 3–7 según la skill). */
-private const val StaggerVisibleCount = 7
+/** Filas que reciben la entrada escalonada: cubre toda la primera pantalla (~10 filas visibles);
+ *  el resto entra instantáneo por scroll, sin re-animar, para que el desplazamiento siga fluido. */
+private const val StaggerVisibleCount = 10
 
 @Composable
 private fun LibraryTopBar() {
@@ -251,6 +267,7 @@ private fun LibraryScreenPreview() {
                 ),
             ),
             nowPlaying = NowPlayingUi(songId = 102L, isPlaying = true),
+            contentPadding = PaddingValues(0.dp),
             onRefresh = {},
             onPlaySong = {},
             onOpenEntry = {},
