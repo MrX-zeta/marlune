@@ -52,8 +52,8 @@ class AppContainer(context: Context) {
     /** Favoritos ("Me gusta") (Room) resueltos contra la biblioteca real. */
     val favoritesRepository: FavoritesRepository = FavoritesRepository(database.favoriteDao(), musicRepository)
 
-    /** Listas de reproducción del usuario (Room). */
-    val playlistRepository: PlaylistRepository = PlaylistRepository(database.playlistDao())
+    /** Listas de reproducción del usuario (Room), con canciones resueltas contra la biblioteca. */
+    val playlistRepository: PlaylistRepository = PlaylistRepository(database.playlistDao(), musicRepository)
 
     private val sessionStore = SessionStore(context.applicationContext)
 

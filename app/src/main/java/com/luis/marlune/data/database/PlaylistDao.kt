@@ -36,4 +36,24 @@ interface PlaylistDao {
 
     @Query("SELECT * FROM playlists WHERE id = :id")
     fun playlist(id: Long): Flow<PlaylistEntity?>
+
+    // --- Canciones dentro de una lista (relación con orden) ---
+
+    @Query("SELECT EXISTS(SELECT 1 FROM playlist_songs WHERE playlist_id = :playlistId AND song_id = :songId)")
+    suspend fun contains(playlistId: Long, songId: Long): Boolean
+
+    /** Siguiente valor de orden (al final de la lista). */
+    @Query("SELECT COALESCE(MAX(position), -1) + 1 FROM playlist_songs WHERE playlist_id = :playlistId")
+    suspend fun nextPosition(playlistId: Long): Int
+
+    @Insert
+    suspend fun insertSong(entry: PlaylistSongEntity)
+
+    /** Quita la relación (no borra la canción ni el archivo). */
+    @Query("DELETE FROM playlist_songs WHERE playlist_id = :playlistId AND song_id = :songId")
+    suspend fun removeSong(playlistId: Long, songId: Long)
+
+    /** Ids de las canciones de la lista, en el ORDEN en que se añadieron. */
+    @Query("SELECT song_id FROM playlist_songs WHERE playlist_id = :playlistId ORDER BY position ASC")
+    fun songIds(playlistId: Long): Flow<List<Long>>
 }
