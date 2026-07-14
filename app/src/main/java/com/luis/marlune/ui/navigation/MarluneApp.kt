@@ -54,6 +54,7 @@ import com.luis.marlune.ui.detail.ArtistDetailRoute
 import com.luis.marlune.ui.detail.ArtistsRoute
 import com.luis.marlune.ui.detail.HistoryRoute
 import com.luis.marlune.ui.detail.LikedSongsRoute
+import com.luis.marlune.ui.detail.PlaylistDetailRoute
 import com.luis.marlune.ui.detail.PlaylistsRoute
 import com.luis.marlune.ui.detail.RecentlyAddedRoute
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
@@ -309,6 +310,7 @@ private fun MarluneNavHost(
             LibraryRoute(
                 onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
                 onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
+                onOpenPlaylist = { id -> navController.navigate(Routes.playlist(id)) },
                 contentPadding = contentPadding,
             )
         }
@@ -357,6 +359,16 @@ private fun MarluneNavHost(
         ) { entry ->
             ArtistDetailRoute(
                 artistId = entry.arguments?.getLong(Routes.ARTIST_ARG) ?: 0L,
+                contentPadding = contentPadding,
+                onBack = navController::popBackStack,
+            )
+        }
+        composable(
+            route = Routes.PLAYLIST_DETAIL,
+            arguments = listOf(navArgument(Routes.PLAYLIST_ARG) { type = NavType.LongType }),
+        ) { entry ->
+            PlaylistDetailRoute(
+                playlistId = entry.arguments?.getLong(Routes.PLAYLIST_ARG) ?: 0L,
                 contentPadding = contentPadding,
                 onBack = navController::popBackStack,
             )

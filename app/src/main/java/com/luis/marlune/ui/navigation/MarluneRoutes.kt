@@ -18,11 +18,14 @@ object Routes {
 
     const val ALBUM_ARG = "albumId"
     const val ARTIST_ARG = "artistId"
+    const val PLAYLIST_ARG = "playlistId"
     const val ALBUM_DETAIL = "album/{$ALBUM_ARG}"
     const val ARTIST_DETAIL = "artist/{$ARTIST_ARG}"
+    const val PLAYLIST_DETAIL = "playlist/{$PLAYLIST_ARG}"
 
     fun album(id: Long) = "album/$id"
     fun artist(id: Long) = "artist/$id"
+    fun playlist(id: Long) = "playlist/$id"
 }
 
 /**
@@ -32,7 +35,7 @@ object Routes {
 fun tabForRoute(route: String?): MarluneDestination = when (route) {
     Routes.LIBRARY,
     Routes.ALBUMS, Routes.ARTISTS, Routes.PLAYLISTS,
-    Routes.ALBUM_DETAIL, Routes.ARTIST_DETAIL,
+    Routes.ALBUM_DETAIL, Routes.ARTIST_DETAIL, Routes.PLAYLIST_DETAIL,
     -> MarluneDestination.LIBRARY
     Routes.SEARCH -> MarluneDestination.SEARCH
     else -> MarluneDestination.HOME

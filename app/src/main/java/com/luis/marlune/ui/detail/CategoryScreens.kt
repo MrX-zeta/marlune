@@ -12,6 +12,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.luis.marlune.R
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.di.rememberPlaylistRepository
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.LoadingRows
 import com.luis.marlune.ui.library.components.CircleCover
@@ -77,6 +78,21 @@ fun PlaylistsRoute(contentPadding: PaddingValues, onBack: () -> Unit) {
             icon = Icons.AutoMirrored.Rounded.QueueMusic,
             title = stringResource(R.string.playlists_empty_title),
             hint = stringResource(R.string.playlists_empty_hint),
+        )
+    }
+}
+
+/** Detalle de una lista: vacío por ahora (las canciones se añaden en el siguiente sub-paso). */
+@Composable
+fun PlaylistDetailRoute(playlistId: Long, contentPadding: PaddingValues, onBack: () -> Unit) {
+    val playlists = rememberPlaylistRepository()
+    val name by playlists.playlistName(playlistId).collectAsStateWithLifecycle(initialValue = null)
+
+    DetailScaffold(name.orEmpty(), onBack, contentPadding) { _ ->
+        EmptyState(
+            icon = Icons.AutoMirrored.Rounded.QueueMusic,
+            title = stringResource(R.string.playlist_detail_empty_title),
+            hint = stringResource(R.string.playlist_detail_empty_hint),
         )
     }
 }
