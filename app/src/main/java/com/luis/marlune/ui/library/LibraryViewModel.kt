@@ -15,7 +15,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -74,6 +76,16 @@ class LibraryViewModel(
             started = SharingStarted.WhileSubscribed(5_000),
             initialValue = LibraryUiState(entriesByFilter = emptyMap(), isLoading = true),
         )
+
+    /**
+     * Pista actual para resaltar su fila, reactiva al MediaController. `distinctUntilChanged` evita
+     * reaccionar a los ticks de posición: solo emite al cambiar de canción o el estado play/pausa.
+     */
+    val nowPlaying: StateFlow<NowPlayingUi> =
+        playback.state
+            .map { NowPlayingUi(songId = if (it.hasItem) it.mediaId?.toLongOrNull() else null, isPlaying = it.isPlaying) }
+            .distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), NowPlayingUi(null, false))
 
     /**
      * Reproduce la canción tocada en la pestaña "Canciones": arma la COLA con toda la biblioteca (en

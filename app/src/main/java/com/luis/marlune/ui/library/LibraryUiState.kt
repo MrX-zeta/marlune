@@ -27,6 +27,13 @@ data class LibraryEntry(
 )
 
 /**
+ * Pista que suena ahora, para resaltar su fila en "Canciones". Se observa aparte del mapa de
+ * entradas (que no debe recomputarse con la posición); [songId] es el `_ID` de MediaStore o `null`.
+ */
+@Immutable
+data class NowPlayingUi(val songId: Long?, val isPlaying: Boolean)
+
+/**
  * Estado de Biblioteca: entradas por categoría YA precalculadas (biblioteca LOCAL real).
  *
  * El filtro seleccionado NO vive aquí: es estado de UI ligero, propiedad de la pantalla, para que

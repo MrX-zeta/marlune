@@ -1,5 +1,8 @@
 package com.luis.marlune.ui.library.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,12 +38,16 @@ import com.luis.marlune.R
 import com.luis.marlune.ui.components.ContextMenu
 import com.luis.marlune.ui.components.ContextMenuItem
 import com.luis.marlune.ui.library.LibraryEntry
+import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import com.luis.marlune.ui.theme.placeholderAccentFor
 
 /**
  * Fila de Biblioteca: portada teñida + título/subtítulo + "3 puntos".
  * El botón de "3 puntos" es un `IconButton` (área de toque de 48 dp) y abre el menú contextual.
+ *
+ * Si [isCurrent] (la pista que suena ahora), el TÍTULO se tiñe con el acento (el dinámico de la
+ * carátula) y aparece un ecualizador sutil; sin fondos llamativos, coherente con la paleta.
  */
 @Composable
 fun LibraryRow(
@@ -50,9 +57,18 @@ fun LibraryRow(
     onClick: () -> Unit,
     menuItems: List<ContextMenuItem>,
     modifier: Modifier = Modifier,
+    isCurrent: Boolean = false,
+    isPlaying: Boolean = false,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val accent = remember(entry.id) { placeholderAccentFor(entry.id) }
+
+    // El título salta a acento cuando esta fila es la pista actual; transición suave (o instantánea).
+    val titleColor by animateColorAsState(
+        targetValue = if (isCurrent) MarluneTheme.colors.accent else MarluneTheme.colors.textPrimary,
+        animationSpec = if (LocalReducedMotion.current) snap() else tween(180),
+        label = "rowTitleColor",
+    )
 
     Row(
         modifier = modifier
@@ -78,7 +94,7 @@ fun LibraryRow(
             Text(
                 text = entry.title,
                 style = MarluneTheme.typography.titleMedium,
-                color = MarluneTheme.colors.textPrimary,
+                color = titleColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -88,6 +104,15 @@ fun LibraryRow(
                 color = MarluneTheme.colors.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        // Indicador de "sonando" (ecualizador sutil) solo en la fila de la pista actual.
+        if (isCurrent) {
+            NowPlayingBars(
+                color = MarluneTheme.colors.accent,
+                isPlaying = isPlaying,
+                modifier = Modifier.padding(start = 8.dp, end = 4.dp),
             )
         }
 

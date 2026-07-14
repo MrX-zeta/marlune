@@ -59,8 +59,10 @@ fun LibraryRoute(
     ),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
     LibraryScreen(
         uiState = uiState,
+        nowPlaying = nowPlaying,
         onRefresh = viewModel::onRefresh,
         // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
         onPlaySong = viewModel::playSongEntry,
@@ -82,6 +84,7 @@ fun LibraryRoute(
 @Composable
 fun LibraryScreen(
     uiState: LibraryUiState,
+    nowPlaying: NowPlayingUi,
     onRefresh: () -> Unit,
     onPlaySong: (Long) -> Unit,
     onOpenEntry: (LibraryEntry) -> Unit,
@@ -133,6 +136,7 @@ fun LibraryScreen(
                         filter = selectedFilter,
                         listState = listState,
                         animateEntrance = firstLoad,
+                        nowPlaying = nowPlaying,
                         onEntryClick = onEntryClick,
                     )
                 }
@@ -147,8 +151,11 @@ private fun LibraryList(
     filter: LibraryFilter,
     listState: LazyListState,
     animateEntrance: Boolean,
+    nowPlaying: NowPlayingUi,
     onEntryClick: (LibraryEntry) -> Unit,
 ) {
+    // Solo se resalta en "Canciones" (los ids de álbum/artista viven en otro espacio de ids).
+    val highlightId = if (filter == LibraryFilter.SONGS) nowPlaying.songId else null
     val isArtist = filter == LibraryFilter.ARTISTS
     val coverShape = if (filter == LibraryFilter.PLAYLISTS || isArtist) CircleCover else RoundedCover
     val coverIcon = coverIconFor(isArtist)
@@ -185,6 +192,8 @@ private fun LibraryList(
                         coverShape = coverShape,
                         onClick = { onEntryClick(entry) },
                         menuItems = menuItems,
+                        isCurrent = highlightId != null && entry.id == highlightId,
+                        isPlaying = nowPlaying.isPlaying,
                     )
                 }
             }
@@ -241,6 +250,7 @@ private fun LibraryScreenPreview() {
                     ),
                 ),
             ),
+            nowPlaying = NowPlayingUi(songId = 102L, isPlaying = true),
             onRefresh = {},
             onPlaySong = {},
             onOpenEntry = {},
