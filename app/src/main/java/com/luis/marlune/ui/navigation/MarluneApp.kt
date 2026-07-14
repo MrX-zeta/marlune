@@ -306,7 +306,11 @@ private fun MarluneNavHost(
             )
         }
         composable(Routes.LIBRARY) {
-            LibraryRoute(onOpenEntry = {}, contentPadding = contentPadding)
+            LibraryRoute(
+                onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
+                onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
+                contentPadding = contentPadding,
+            )
         }
         composable(Routes.SEARCH) {
             SearchRoute(modifier = Modifier.padding(contentPadding))

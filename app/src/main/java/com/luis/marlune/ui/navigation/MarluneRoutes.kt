@@ -25,9 +25,15 @@ object Routes {
     fun artist(id: Long) = "artist/$id"
 }
 
-/** Pestaña inferior resaltada según la ruta actual (los detalles cuelgan de Inicio). */
+/**
+ * Pestaña inferior resaltada según la ruta actual. Álbumes/Artistas y sus detalles cuelgan de
+ * Biblioteca; Me gusta / Añadidas / historial cuelgan de Inicio.
+ */
 fun tabForRoute(route: String?): MarluneDestination = when (route) {
-    Routes.LIBRARY -> MarluneDestination.LIBRARY
+    Routes.LIBRARY,
+    Routes.ALBUMS, Routes.ARTISTS, Routes.PLAYLISTS,
+    Routes.ALBUM_DETAIL, Routes.ARTIST_DETAIL,
+    -> MarluneDestination.LIBRARY
     Routes.SEARCH -> MarluneDestination.SEARCH
     else -> MarluneDestination.HOME
 }

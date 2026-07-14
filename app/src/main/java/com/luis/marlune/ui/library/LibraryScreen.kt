@@ -54,7 +54,8 @@ import com.luis.marlune.ui.theme.MarluneTheme
 /** Punto de entrada con estado de Biblioteca. */
 @Composable
 fun LibraryRoute(
-    onOpenEntry: (LibraryEntry) -> Unit,
+    onOpenAlbum: (Long) -> Unit,
+    onOpenArtist: (Long) -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel(
@@ -70,7 +71,8 @@ fun LibraryRoute(
         onRefresh = viewModel::onRefresh,
         // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
         onPlaySong = viewModel::playSongEntry,
-        onOpenEntry = onOpenEntry,
+        onOpenAlbum = onOpenAlbum,
+        onOpenArtist = onOpenArtist,
         modifier = modifier,
     )
 }
@@ -92,15 +94,22 @@ fun LibraryScreen(
     contentPadding: PaddingValues,
     onRefresh: () -> Unit,
     onPlaySong: (Long) -> Unit,
-    onOpenEntry: (LibraryEntry) -> Unit,
+    onOpenAlbum: (Long) -> Unit,
+    onOpenArtist: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // Selección local: instantánea y desacoplada del ViewModel y de la recomposición del contenido.
     var selectedFilter by rememberSaveable { mutableStateOf(LibraryFilter.SONGS) }
 
-    // En "Canciones" el toque reproduce; en Álbumes/Artistas abre la entrada (detalle, más adelante).
+    // El toque depende del chip: Canciones reproduce; Álbumes/Artistas abren su detalle (id de la
+    // entrada = ALBUM_ID/ARTIST_ID). Listas: sin acción hasta que existan las playlists.
     val onEntryClick: (LibraryEntry) -> Unit = { entry ->
-        if (selectedFilter == LibraryFilter.SONGS) onPlaySong(entry.id) else onOpenEntry(entry)
+        when (selectedFilter) {
+            LibraryFilter.SONGS -> onPlaySong(entry.id)
+            LibraryFilter.ALBUMS -> onOpenAlbum(entry.id)
+            LibraryFilter.ARTISTS -> onOpenArtist(entry.id)
+            LibraryFilter.PLAYLISTS -> {}
+        }
     }
 
     // El stagger de filas corre una sola vez (primera carga), no en cada cambio de filtro.
@@ -272,7 +281,8 @@ private fun LibraryScreenPreview() {
             contentPadding = PaddingValues(0.dp),
             onRefresh = {},
             onPlaySong = {},
-            onOpenEntry = {},
+            onOpenAlbum = {},
+            onOpenArtist = {},
         )
     }
 }
