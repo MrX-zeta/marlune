@@ -55,6 +55,7 @@ import com.luis.marlune.ui.detail.ArtistsRoute
 import com.luis.marlune.ui.detail.HistoryRoute
 import com.luis.marlune.ui.detail.LikedSongsRoute
 import com.luis.marlune.ui.detail.PlaylistsRoute
+import com.luis.marlune.ui.detail.RecentlyAddedRoute
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.components.rememberHapticTick
 import com.luis.marlune.ui.home.HomeRoute
@@ -298,7 +299,8 @@ private fun MarluneNavHost(
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeRoute(
-                onShortcutClick = { shortcut -> navController.navigate(shortcut.route()) },
+                onOpenLiked = { navController.navigate(Routes.LIKED) },
+                onOpenRecentlyAdded = { navController.navigate(Routes.RECENTLY_ADDED) },
                 onSeeAllRecent = { navController.navigate(Routes.HISTORY) },
                 contentPadding = contentPadding,
             )
@@ -311,6 +313,9 @@ private fun MarluneNavHost(
         }
         composable(Routes.LIKED) {
             LikedSongsRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
+        }
+        composable(Routes.RECENTLY_ADDED) {
+            RecentlyAddedRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
         }
         composable(Routes.HISTORY) {
             HistoryRoute(contentPadding = contentPadding, onBack = navController::popBackStack)

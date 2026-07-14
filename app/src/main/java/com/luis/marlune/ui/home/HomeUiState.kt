@@ -7,12 +7,17 @@ import com.luis.marlune.domain.model.Song
 /** Franja del día para el saludo protagonista de la cabecera. */
 enum class Greeting { MORNING, AFTERNOON, NIGHT }
 
+/** Info mínima para la card "Continuar" (sesión guardada): carátula + título de la última pista. */
+@Immutable
+data class ContinueInfo(val title: String, val artworkUri: Uri?)
+
 /**
  * Estado de la pantalla de Inicio.
  *
  * `recent` es "Escuchado hace poco" desde el historial real (Room), más reciente primero y sin
  * duplicados. `isLoading` cubre el arranque (shimmer); `libraryEmpty`, un dispositivo sin música
- * (distinto de historial vacío, que solo significa que aún no se ha reproducido nada).
+ * (distinto de historial vacío). `continueSession` es null si no hay sesión guardada (la card se
+ * oculta).
  */
 @Immutable
 data class HomeUiState(
@@ -21,6 +26,7 @@ data class HomeUiState(
     val isLoading: Boolean,
     val libraryEmpty: Boolean,
     val likedCount: Int,
+    val continueSession: ContinueInfo?,
 ) {
     companion object {
         /** Estado de ejemplo para previews (no se usa en ejecución). */
@@ -32,6 +38,7 @@ data class HomeUiState(
             isLoading = false,
             libraryEmpty = false,
             likedCount = 3,
+            continueSession = ContinueInfo("Marea nocturna", null),
         )
 
         private fun sampleSong(id: Long, title: String, artist: String) = Song(
@@ -51,6 +58,3 @@ data class HomeUiState(
         )
     }
 }
-
-/** Accesos rápidos del grid. "Listas" sustituye a "Descargas" (biblioteca 100 % local). */
-enum class LibraryShortcut { LIKED, PLAYLISTS, ALBUMS, ARTISTS }

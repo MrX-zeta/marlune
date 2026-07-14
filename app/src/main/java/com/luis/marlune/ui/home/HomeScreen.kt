@@ -33,12 +33,13 @@ import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberHistoryRepository
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
+import com.luis.marlune.di.rememberSavedSessionRepository
 import com.luis.marlune.domain.model.Song
 import com.luis.marlune.playback.PlaybackRepository
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.LoadingRows
 import com.luis.marlune.ui.components.StaggeredReveal
-import com.luis.marlune.ui.home.components.LibraryShortcutsGrid
+import com.luis.marlune.ui.home.components.HomeQuickAccess
 import com.luis.marlune.ui.home.components.RecentTrackRow
 import com.luis.marlune.ui.theme.MarluneTheme
 
@@ -47,7 +48,8 @@ private const val RecentPreviewCount = 4
 /** Punto de entrada con estado de Inicio. Los callbacks los resolverá la navegación. */
 @Composable
 fun HomeRoute(
-    onShortcutClick: (LibraryShortcut) -> Unit,
+    onOpenLiked: () -> Unit,
+    onOpenRecentlyAdded: () -> Unit,
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
@@ -55,6 +57,8 @@ fun HomeRoute(
         factory = HomeViewModel.factory(
             rememberMusicRepository(),
             rememberHistoryRepository(),
+            rememberPlaybackRepository(),
+            rememberSavedSessionRepository(),
             rememberFavoritesRepository(),
         ),
     ),
@@ -67,7 +71,10 @@ fun HomeRoute(
         onPlayTrack = { song ->
             playback.playSongs(uiState.recent, uiState.recent.indexOf(song))
         },
-        onShortcutClick = onShortcutClick,
+        onOpenLiked = onOpenLiked,
+        onOpenRecentlyAdded = onOpenRecentlyAdded,
+        onMix = viewModel::playMix,
+        onContinue = viewModel::resumeSession,
         onSeeAllRecent = onSeeAllRecent,
         contentPadding = contentPadding,
         modifier = modifier,
@@ -75,18 +82,20 @@ fun HomeRoute(
 }
 
 /**
- * Pantalla de Inicio (sin estado).
+ * Pantalla de Inicio (sin estado): arranque contextual, no un segundo navegador de catálogo.
  *
- * Cabecera con UN saludo protagonista. La lista "Escuchado hace poco" muestra hasta 4 ítems con
- * un enlace "Ver todo" y entra con stagger fade+rise solo en la primera carga. El contenido se
- * desplaza bajo el mini-player flotante: [contentPadding] (alturas reales del mini-player + barra
- * vía WindowInsets del Scaffold) despeja la última fila del grid para que nada quede tapado.
+ * Saludo + "Escuchado hace poco" (con "Ver todo") + accesos rápidos (Me gusta, Añadidas
+ * recientemente, Mix, y "Continuar" solo si hay sesión). El contenido se desplaza bajo el
+ * mini-player flotante: [contentPadding] despeja la última fila para que nada quede tapado.
  */
 @Composable
 fun HomeScreen(
     uiState: HomeUiState,
     onPlayTrack: (Song) -> Unit,
-    onShortcutClick: (LibraryShortcut) -> Unit,
+    onOpenLiked: () -> Unit,
+    onOpenRecentlyAdded: () -> Unit,
+    onMix: () -> Unit,
+    onContinue: () -> Unit,
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
@@ -135,9 +144,16 @@ fun HomeScreen(
             }
 
             Spacer(Modifier.height(28.dp))
-            LibraryShortcutsGrid(onShortcutClick = onShortcutClick, likedCount = uiState.likedCount)
+            HomeQuickAccess(
+                likedCount = uiState.likedCount,
+                continueSession = uiState.continueSession,
+                onLiked = onOpenLiked,
+                onRecentlyAdded = onOpenRecentlyAdded,
+                onMix = onMix,
+                onContinue = onContinue,
+            )
 
-            // Padding inferior dinámico: sube el grid por encima del mini-player flotante + barra.
+            // Padding inferior dinámico: sube el bloque por encima del mini-player flotante + barra.
             Spacer(Modifier.height(contentPadding.calculateBottomPadding() + 12.dp))
         }
     }
@@ -184,7 +200,10 @@ private fun HomeScreenPreview() {
         HomeScreen(
             uiState = HomeUiState.Preview,
             onPlayTrack = {},
-            onShortcutClick = {},
+            onOpenLiked = {},
+            onOpenRecentlyAdded = {},
+            onMix = {},
+            onContinue = {},
             onSeeAllRecent = {},
             contentPadding = PaddingValues(0.dp),
         )
