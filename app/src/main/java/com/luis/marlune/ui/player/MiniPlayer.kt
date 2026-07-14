@@ -3,6 +3,7 @@ package com.luis.marlune.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -34,10 +35,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -59,6 +62,7 @@ import com.luis.marlune.ui.player.components.resolveTrackSwipe
 import com.luis.marlune.ui.player.components.runTrackSlideAnimation
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -105,8 +109,17 @@ fun MiniPlayer(
 ) {
     val reducedMotion = LocalReducedMotion.current
     val scope = rememberCoroutineScope()
-    val dragProgress = remember { Animatable(0f) } // 0 = mini en reposo, 1 = listo para expandir
-    val offsetX = remember { Animatable(0f) } // desplazamiento del cambio de pista horizontal
+    // Arrastre EN VIVO: estado síncrono que el graphicsLayer lee; se escribe DIRECTAMENTE dentro del
+    // bucle de punteros (sin corrutina por evento), así la tarjeta sigue al dedo sin retraso de
+    // despacho al frame (el delay que solo se notaba en Biblioteca, con el hilo principal cargado).
+    var liveOffsetX by remember { mutableFloatStateOf(0f) } // desplazamiento del cambio de pista horizontal
+    var liveDragProgress by remember { mutableFloatStateOf(0f) } // 0 = mini en reposo, 1 = listo para expandir
+    // Animatable SOLO como driver de la animación de confirmación del cambio de pista
+    // (runTrackSlideAnimation); su valor se refleja en liveOffsetX mientras corre.
+    val offsetX = remember { Animatable(0f) }
+    // Animación de SOLTAR/confirmar en curso (spring de regreso, snap de expandir o slide de
+    // confirmación). Se cancela al iniciar un nuevo arrastre para que arranque limpio desde el dedo.
+    val releaseJob = remember { object { var value: Job? = null } }
     // State layer de la card, controlado por el detector: solo se ilumina en tap real, no al deslizar.
     val interactionSource = remember { MutableInteractionSource() }
     var cardWidthPx by remember { mutableStateOf(0f) }
@@ -119,10 +132,25 @@ fun MiniPlayer(
         if (transition.id != lastHandledTransition) {
             lastHandledTransition = transition.id
             if (cardWidthPx > 0f) {
-                when (transition.kind) {
-                    TrackChange.NEXT -> runTrackSlideAnimation(true, offsetX, cardWidthPx, reducedMotion)
-                    TrackChange.PREVIOUS -> runTrackSlideAnimation(false, offsetX, cardWidthPx, reducedMotion)
-                    TrackChange.DIRECT -> {} // carga directa: sin slide
+                val forward = when (transition.kind) {
+                    TrackChange.NEXT -> true
+                    TrackChange.PREVIOUS -> false
+                    TrackChange.DIRECT -> null // carga directa: sin slide
+                }
+                if (forward != null) {
+                    // La confirmación es una animación de SOLTAR: corre en su propia corrutina y
+                    // escribe liveOffsetX (vía offsetX). runTrackSlideAnimation se queda idéntico; solo
+                    // se le siembra la posición actual del dedo y se refleja su valor en el estado.
+                    releaseJob.value?.cancel()
+                    releaseJob.value = scope.launch {
+                        offsetX.snapTo(liveOffsetX) // continúa desde donde quedó el dedo
+                        val mirror = launch { snapshotFlow { offsetX.value }.collect { liveOffsetX = it } }
+                        try {
+                            runTrackSlideAnimation(forward, offsetX, cardWidthPx, reducedMotion)
+                        } finally {
+                            mirror.cancel()
+                        }
+                    }
                 }
             }
         }
@@ -138,6 +166,9 @@ fun MiniPlayer(
             val distancePx = ExpandDragDistance.toPx()
             awaitEachGesture {
                 val down = awaitFirstDown(requireUnconsumed = false)
+                // Nuevo arrastre: corta cualquier animación de soltar/confirmar en curso para que el
+                // seguimiento del dedo arranque limpio desde la posición actual (sin pelear con ella).
+                releaseJob.value?.cancel()
                 val velocityTracker = VelocityTracker()
                 velocityTracker.addPosition(down.uptimeMillis, down.position)
                 var axis = MiniDragAxis.Undecided
@@ -192,16 +223,15 @@ fun MiniPlayer(
                         MiniDragAxis.ExpandUp -> {
                             change.consume()
                             val deltaUp = -change.positionChange().y
-                            scope.launch {
-                                dragProgress.snapTo((dragProgress.value + deltaUp / distancePx).coerceIn(0f, 1f))
-                            }
+                            // Síncrono: sigue el dedo en el mismo frame, sin despachar corrutina.
+                            liveDragProgress = (liveDragProgress + deltaUp / distancePx).coerceIn(0f, 1f)
                         }
 
                         MiniDragAxis.Horizontal -> {
                             change.consume()
                             dragX += change.positionChange().x
-                            val target = dragX // la tarjeta sigue el acumulado (misma dirección)
-                            scope.launch { offsetX.snapTo(target) }
+                            // Síncrono: la tarjeta sigue el acumulado (misma dirección) sin corrutina.
+                            liveOffsetX = dragX
                         }
 
                         // Hacia abajo sobre el mini: sin acción, pero se consume (la lista no scrollea).
@@ -233,18 +263,21 @@ fun MiniPlayer(
                     }
 
                     MiniDragAxis.ExpandUp -> {
-                        val commit = dragProgress.value >= 0.35f || velocity.y <= -1200f
+                        val commit = liveDragProgress >= 0.35f || velocity.y <= -1200f
                         if (commit) {
                             onExpand() // misma transición mini↔full, recorrida en sentido inverso
-                            scope.launch { dragProgress.snapTo(0f) }
+                            liveDragProgress = 0f
+                        } else if (reducedMotion) {
+                            liveDragProgress = 0f
                         } else {
-                            scope.launch {
-                                if (reducedMotion) {
-                                    dragProgress.snapTo(0f)
-                                } else {
-                                    // Vuelta al mini; spring rápido (se asienta bajo 300 ms), sin rebote.
-                                    dragProgress.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
-                                }
+                            // Vuelta al mini; spring rápido (se asienta bajo 300 ms), sin rebote.
+                            releaseJob.value?.cancel()
+                            releaseJob.value = scope.launch {
+                                animate(
+                                    initialValue = liveDragProgress,
+                                    targetValue = 0f,
+                                    animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium),
+                                ) { value, _ -> liveDragProgress = value }
                             }
                         }
                     }
@@ -254,9 +287,19 @@ fun MiniPlayer(
                         // Solo elige QUÉ comando pedir; la animación de confirmación la corre el
                         // observador de trackTransition (fuente única de dirección). Si NO hay pista
                         // a la que saltar (extremo/cola de 1), la tarjeta REGRESA con spring.
-                        fun settleBack() = scope.launch {
-                            if (reducedMotion) offsetX.snapTo(0f)
-                            else offsetX.animateTo(0f, spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+                        fun settleBack() {
+                            releaseJob.value?.cancel()
+                            releaseJob.value = scope.launch {
+                                if (reducedMotion) {
+                                    liveOffsetX = 0f
+                                } else {
+                                    animate(
+                                        initialValue = liveOffsetX,
+                                        targetValue = 0f,
+                                        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium),
+                                    ) { value, _ -> liveOffsetX = value }
+                                }
+                            }
                         }
                         when (
                             resolveTrackSwipe(dragX, velocity.x, width * TrackCommitFraction, TrackFlingVelocity)
@@ -274,9 +317,9 @@ fun MiniPlayer(
         .graphicsLayer {
             // Efecto acoplado (solo visual): la tarjeta se levanta y crece al subir, o acompaña el
             // dedo en horizontal al cambiar de pista. No afecta a las coordenadas del gesto (va debajo).
-            translationX = offsetX.value
-            translationY = -dragProgress.value * ExpandLift.toPx()
-            val grow = 1f + dragProgress.value * 0.06f
+            translationX = liveOffsetX
+            translationY = -liveDragProgress * ExpandLift.toPx()
+            val grow = 1f + liveDragProgress * 0.06f
             scaleX = grow
             scaleY = grow
         }
