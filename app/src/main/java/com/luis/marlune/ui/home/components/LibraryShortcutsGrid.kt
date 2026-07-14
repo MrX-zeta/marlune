@@ -27,10 +27,14 @@ import com.luis.marlune.ui.components.PressableCard
 import com.luis.marlune.ui.home.LibraryShortcut
 import com.luis.marlune.ui.theme.MarluneTheme
 
-/** Grid 2×2 de accesos rápidos. Solo feedback de press (0.97) vía [PressableCard]. */
+/**
+ * Grid 2×2 de accesos rápidos. Solo feedback de press (0.97) vía [PressableCard]. La tarjeta
+ * "Me gusta" muestra el conteo real de favoritos ([likedCount]); las demás, solo su etiqueta.
+ */
 @Composable
 fun LibraryShortcutsGrid(
     onShortcutClick: (LibraryShortcut) -> Unit,
+    likedCount: Int,
     modifier: Modifier = Modifier,
 ) {
     val shortcuts = LibraryShortcut.entries
@@ -43,6 +47,7 @@ fun LibraryShortcutsGrid(
                 rowShortcuts.forEach { shortcut ->
                     ShortcutCard(
                         shortcut = shortcut,
+                        count = if (shortcut == LibraryShortcut.LIKED && likedCount > 0) likedCount else null,
                         onClick = { onShortcutClick(shortcut) },
                         modifier = Modifier.weight(1f),
                     )
@@ -55,6 +60,7 @@ fun LibraryShortcutsGrid(
 @Composable
 private fun ShortcutCard(
     shortcut: LibraryShortcut,
+    count: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -77,6 +83,14 @@ private fun ShortcutCard(
                 style = MarluneTheme.typography.titleSmall,
                 color = MarluneTheme.colors.textPrimary,
             )
+            if (count != null) {
+                Spacer(Modifier.weight(1f))
+                Text(
+                    text = count.toString(),
+                    style = MarluneTheme.typography.bodyMedium,
+                    color = MarluneTheme.colors.textSecondary,
+                )
+            }
         }
     }
 }

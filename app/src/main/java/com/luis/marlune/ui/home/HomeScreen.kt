@@ -29,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.LibraryMusic
 import com.luis.marlune.R
+import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberHistoryRepository
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
@@ -51,7 +52,11 @@ fun HomeRoute(
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(
-        factory = HomeViewModel.factory(rememberMusicRepository(), rememberHistoryRepository()),
+        factory = HomeViewModel.factory(
+            rememberMusicRepository(),
+            rememberHistoryRepository(),
+            rememberFavoritesRepository(),
+        ),
     ),
     playback: PlaybackRepository = rememberPlaybackRepository(),
 ) {
@@ -130,7 +135,7 @@ fun HomeScreen(
             }
 
             Spacer(Modifier.height(28.dp))
-            LibraryShortcutsGrid(onShortcutClick = onShortcutClick)
+            LibraryShortcutsGrid(onShortcutClick = onShortcutClick, likedCount = uiState.likedCount)
 
             // Padding inferior dinámico: sube el grid por encima del mini-player flotante + barra.
             Spacer(Modifier.height(contentPadding.calculateBottomPadding() + 12.dp))

@@ -20,6 +20,7 @@ data class HomeUiState(
     val recent: List<Song>,
     val isLoading: Boolean,
     val libraryEmpty: Boolean,
+    val likedCount: Int,
 ) {
     companion object {
         /** Estado de ejemplo para previews (no se usa en ejecución). */
@@ -30,6 +31,7 @@ data class HomeUiState(
             },
             isLoading = false,
             libraryEmpty = false,
+            likedCount = 3,
         )
 
         private fun sampleSong(id: Long, title: String, artist: String) = Song(
