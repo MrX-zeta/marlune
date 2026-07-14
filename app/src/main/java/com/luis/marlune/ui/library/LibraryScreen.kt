@@ -1,5 +1,6 @@
 package com.luis.marlune.ui.library
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -113,8 +114,8 @@ fun LibraryScreen(
     LaunchedEffect(selectedFilter) { listState.scrollToItem(0) }
 
     // Padding inferior dinámico: el alto real del mini-player (cuando hay pista) + la barra vía el
-    // inset del Scaffold, + un margen, para que la última canción suba por encima del mini-player.
-    val listBottomPadding = contentPadding.calculateBottomPadding() + 12.dp
+    // inset del Scaffold, + un respiro para que la última canción no quede pegada al borde/mini-player.
+    val listBottomPadding = contentPadding.calculateBottomPadding() + 24.dp
 
     Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(
@@ -185,6 +186,7 @@ private fun LibraryList(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = bottomPadding),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         if (entries.isEmpty()) {
             item(key = "library-empty", contentType = "empty") {
