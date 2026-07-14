@@ -2,58 +2,74 @@ package com.luis.marlune.playback
 
 import android.content.ComponentName
 import android.content.Context
+import android.net.Uri
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.ListenableFuture
+import com.luis.marlune.domain.model.RepeatMode
 import com.luis.marlune.domain.model.Song
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 /**
- * Estado de reproducción expuesto a la app (Fase 2, mínimo). En la Fase 3 se ampliará con posición,
- * duración y cola para alimentar la UI del Player.
+ * Estado de reproducción REAL, leído del `MediaController`. `hasItem = false` significa que no hay
+ * nada en la cola (estado vacío: la UI no muestra una pista falsa). Sin datos mock.
  */
 data class PlaybackState(
+    val hasItem: Boolean = false,
+    val mediaId: String? = null,
+    val title: String = "",
+    val artist: String = "",
+    val artworkUri: Uri? = null,
+    val positionMs: Long = 0L,
+    val durationMs: Long = 0L,
     val isPlaying: Boolean = false,
-    val currentMediaId: String? = null,
+    val shuffle: Boolean = false,
+    val repeatMode: RepeatMode = RepeatMode.OFF,
+    val currentIndex: Int = 0,
+    val queueSize: Int = 0,
 )
 
 /**
  * Envuelve Media3 para que los ViewModels/UI no se acoplen a ExoPlayer ni al `MediaController`.
  *
  * El controlador se conecta de forma ASÍNCRONA al [MarluneMediaService] (`ListenableFuture`); su
- * disponibilidad se expone como [isConnected] y no se asume lista al instante: una acción de
- * reproducción emitida antes de conectar queda pendiente y se ejecuta al conectar. Todo el acceso al
- * controlador ocurre en el hilo principal (requisito de Media3).
+ * disponibilidad se expone como [isConnected] y no se asume lista al instante: una acción emitida
+ * antes de conectar queda pendiente y se ejecuta al conectar. El [state] refleja la reproducción
+ * real (pista, posición, isPlaying, shuffle/repeat), actualizado por eventos del player y por un
+ * ticker de posición mientras suena. Todo el acceso al controlador ocurre en el hilo principal.
  */
 class PlaybackRepository(context: Context) {
 
     private val appContext = context.applicationContext
+    private val mainScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
 
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var controller: MediaController? = null
-
-    /** Acción encolada mientras el controlador aún no está listo (p. ej. el primer "reproducir"). */
     private var pendingAction: ((MediaController) -> Unit)? = null
+    private var positionJob: Job? = null
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
-    private val _playbackState = MutableStateFlow(PlaybackState())
-    val playbackState: StateFlow<PlaybackState> = _playbackState.asStateFlow()
+    private val _state = MutableStateFlow(PlaybackState())
+    val state: StateFlow<PlaybackState> = _state.asStateFlow()
 
     private val listener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) {
-            _playbackState.value = PlaybackState(
-                isPlaying = player.isPlaying,
-                currentMediaId = player.currentMediaItem?.mediaId,
-            )
-        }
+        override fun onEvents(player: Player, events: Player.Events) = refresh()
     }
 
     /** Conecta el controlador al servicio (idempotente). Llamar desde el hilo principal. */
@@ -68,15 +84,17 @@ class PlaybackRepository(context: Context) {
                 controller = c
                 c.addListener(listener)
                 _isConnected.value = true
-                _playbackState.value = PlaybackState(c.isPlaying, c.currentMediaItem?.mediaId)
+                refresh()
                 pendingAction?.let { it(c); pendingAction = null }
             },
             ContextCompat.getMainExecutor(appContext),
         )
     }
 
-    /** Libera el controlador (no detiene la reproducción: el servicio sigue). Llamar en el hilo principal. */
+    /** Libera el controlador (no detiene la reproducción: el servicio sigue). Hilo principal. */
     fun release() {
+        positionJob?.cancel()
+        positionJob = null
         controller?.removeListener(listener)
         controllerFuture?.let { MediaController.releaseFuture(it) }
         controllerFuture = null
@@ -101,14 +119,6 @@ class PlaybackRepository(context: Context) {
 
     fun playPause() = controller?.let { if (it.isPlaying) it.pause() else it.play() }
 
-    fun pause() {
-        controller?.pause()
-    }
-
-    fun resume() {
-        controller?.play()
-    }
-
     fun next() {
         controller?.seekToNextMediaItem()
     }
@@ -121,27 +131,89 @@ class PlaybackRepository(context: Context) {
         controller?.seekTo(positionMs)
     }
 
+    fun toggleShuffle() {
+        controller?.let { it.shuffleModeEnabled = !it.shuffleModeEnabled }
+    }
+
+    fun cycleRepeat() {
+        controller?.let { it.repeatMode = it.repeatMode.toRepeatMode().next().toMedia3() }
+    }
+
+    private fun refresh() {
+        val c = controller ?: return
+        val item = c.currentMediaItem
+        _state.value = PlaybackState(
+            hasItem = item != null && c.mediaItemCount > 0,
+            mediaId = item?.mediaId,
+            title = item?.mediaMetadata?.title?.toString().orEmpty(),
+            artist = item?.mediaMetadata?.artist?.toString().orEmpty(),
+            artworkUri = item?.mediaMetadata?.artworkUri,
+            positionMs = c.currentPosition.coerceAtLeast(0L),
+            durationMs = c.duration.knownOrZero(),
+            isPlaying = c.isPlaying,
+            shuffle = c.shuffleModeEnabled,
+            repeatMode = c.repeatMode.toRepeatMode(),
+            currentIndex = c.currentMediaItemIndex,
+            queueSize = c.mediaItemCount,
+        )
+        syncTicker(c.isPlaying)
+    }
+
+    /** Ticker de posición: solo corre mientras suena (nada de polling en reposo); en el hilo principal. */
+    private fun syncTicker(playing: Boolean) {
+        positionJob?.cancel()
+        if (!playing) return
+        positionJob = mainScope.launch {
+            while (isActive) {
+                kotlinx.coroutines.delay(POSITION_TICK_MS)
+                val c = controller ?: break
+                _state.update {
+                    it.copy(
+                        positionMs = c.currentPosition.coerceAtLeast(0L),
+                        durationMs = c.duration.knownOrZero(),
+                    )
+                }
+            }
+        }
+    }
+
     private fun runOrQueue(action: (MediaController) -> Unit) {
         val c = controller
-        if (c != null) {
-            action(c)
-        } else {
+        if (c != null) action(c) else {
             pendingAction = action
             connect()
         }
     }
 
+    private fun Long.knownOrZero(): Long = if (this == C.TIME_UNSET) 0L else this.coerceAtLeast(0L)
+
+    private fun Int.toRepeatMode(): RepeatMode = when (this) {
+        Player.REPEAT_MODE_ONE -> RepeatMode.ONE
+        Player.REPEAT_MODE_ALL -> RepeatMode.ALL
+        else -> RepeatMode.OFF
+    }
+
+    private fun RepeatMode.toMedia3(): Int = when (this) {
+        RepeatMode.ONE -> Player.REPEAT_MODE_ONE
+        RepeatMode.ALL -> Player.REPEAT_MODE_ALL
+        RepeatMode.OFF -> Player.REPEAT_MODE_OFF
+    }
+
     private fun Song.toMediaItem(): MediaItem =
         MediaItem.Builder()
-            .setMediaId(id.toString()) // el _ID de MediaStore: clave para referenciar (Room, Fase 3)
+            .setMediaId(id.toString()) // el _ID de MediaStore: clave para referenciar (Room, luego)
             .setUri(contentUri) // content URI, nunca ruta (scoped storage)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(title)
                     .setArtist(artist)
                     .setAlbumTitle(album)
-                    .setArtworkUri(artworkUri) // la notificación carga la carátula desde este URI
+                    .setArtworkUri(artworkUri) // la notificación y la UI cargan la carátula desde aquí
                     .build(),
             )
             .build()
+
+    private companion object {
+        const val POSITION_TICK_MS = 500L
+    }
 }
