@@ -6,6 +6,7 @@ import com.luis.marlune.MarluneApplication
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.MusicRepository
+import com.luis.marlune.data.repository.SavedSessionRepository
 import com.luis.marlune.playback.PlaybackRepository
 
 /**
@@ -34,4 +35,10 @@ fun rememberHistoryRepository(): HistoryRepository {
 fun rememberFavoritesRepository(): FavoritesRepository {
     val app = LocalContext.current.applicationContext as MarluneApplication
     return app.container.favoritesRepository
+}
+
+@Composable
+fun rememberSavedSessionRepository(): SavedSessionRepository {
+    val app = LocalContext.current.applicationContext as MarluneApplication
+    return app.container.savedSessionRepository
 }

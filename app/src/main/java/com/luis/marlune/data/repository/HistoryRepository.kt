@@ -29,6 +29,12 @@ class HistoryRepository(
         dao.upsert(PlayHistoryEntity(songId = songId, lastPlayedAt = System.currentTimeMillis()))
     }
 
+    /**
+     * Última reproducción por pista (`_ID` → timestamp). Las pistas ausentes nunca se han
+     * reproducido; sirve para sesgar el Mix hacia las menos escuchadas.
+     */
+    suspend fun lastPlayedById(): Map<Long, Long> = dao.all().associate { it.songId to it.lastPlayedAt }
+
     private companion object {
         const val HISTORY_LIMIT = 50
     }

@@ -16,4 +16,8 @@ interface PlayHistoryDao {
     /** Historial más reciente primero, ya deduplicado por pista (una fila por canción). */
     @Query("SELECT * FROM play_history ORDER BY last_played_at DESC LIMIT :limit")
     fun recent(limit: Int): Flow<List<PlayHistoryEntity>>
+
+    /** Snapshot completo (para sesgar el Mix hacia las menos escuchadas). */
+    @Query("SELECT * FROM play_history")
+    suspend fun all(): List<PlayHistoryEntity>
 }

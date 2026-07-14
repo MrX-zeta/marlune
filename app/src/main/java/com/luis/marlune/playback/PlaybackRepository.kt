@@ -139,15 +139,16 @@ class PlaybackRepository(context: Context) {
     }
 
     /**
-     * Fija la COLA real desde la biblioteca y empieza a reproducir en [startIndex]. Si el controlador
-     * aún no está conectado, la acción queda pendiente y se ejecuta al conectar (y dispara la conexión).
+     * Fija la COLA real desde la biblioteca y empieza a reproducir en [startIndex] (opcionalmente
+     * desde [startPositionMs], p. ej. al reanudar la sesión). Si el controlador aún no está
+     * conectado, la acción queda pendiente y se ejecuta al conectar (y dispara la conexión).
      */
-    fun playSongs(songs: List<Song>, startIndex: Int) {
+    fun playSongs(songs: List<Song>, startIndex: Int, startPositionMs: Long = 0L) {
         if (songs.isEmpty()) return
         val items = songs.map { it.toMediaItem() }
         val index = startIndex.coerceIn(0, items.lastIndex)
         runOrQueue { c ->
-            c.setMediaItems(items, index, 0L)
+            c.setMediaItems(items, index, startPositionMs.coerceAtLeast(0L))
             c.prepare()
             c.play()
         }
