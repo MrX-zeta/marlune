@@ -82,6 +82,10 @@ private const val TapHighlightDelayMillis = 100L // espera antes de iluminar (ev
 // Ventana para que la confirmación del cambio de pista tome el relevo del arrastre antes de que el
 // fallback asiente la tarjeta (evita el drift al centro; solo actúa si NO llega la transición).
 private const val SettleFallbackMillis = 160L
+// El swipe horizontal (cambio de pista) tiene PRIORIDAD sobre el eje vertical: solo se bloquea a
+// vertical si |dy| supera |dx| por este factor. Evita que un swipe horizontal con leve componente
+// vertical se bloquee a "Down" (sin acción) y se pierda el cambio de pista fuera de la carátula.
+private const val VerticalDominanceRatio = 1.5f
 
 private enum class MiniDragAxis { Undecided, ExpandUp, Horizontal, Down }
 
@@ -208,10 +212,13 @@ fun MiniPlayer(
                         val totalDx = change.position.x - down.position.x
                         val totalDy = change.position.y - down.position.y
                         if (abs(totalDx) >= touchSlop || abs(totalDy) >= touchSlop) {
+                            // Horizontal (cambio de pista) tiene prioridad: solo se bloquea a un eje
+                            // vertical si |dy| DOMINA claramente. Así un swipe horizontal con leve
+                            // deriva vertical no se pierde en cualquier punto de la card.
                             axis = when {
-                                abs(totalDx) > abs(totalDy) -> MiniDragAxis.Horizontal
-                                totalDy < 0f -> MiniDragAxis.ExpandUp
-                                else -> MiniDragAxis.Down // hacia abajo: sin acción en el mini
+                                abs(totalDy) > abs(totalDx) * VerticalDominanceRatio ->
+                                    if (totalDy < 0f) MiniDragAxis.ExpandUp else MiniDragAxis.Down
+                                else -> MiniDragAxis.Horizontal
                             }
                             cancelHighlight() // empezó el arrastre → sin iluminación; manda el gesto
                         }
@@ -224,15 +231,21 @@ fun MiniPlayer(
                     // (era la causa del delay/titubeo del swipe solo en Biblioteca).
                     when (axis) {
                         MiniDragAxis.ExpandUp -> {
-                            change.consume()
+                            // Igual que Horizontal: lee el delta ANTES de consumir (si no, positionChange()
+                            // devuelve Offset.Zero y el gesto de expandir tampoco seguiría al dedo).
                             val deltaUp = -change.positionChange().y
+                            change.consume()
                             // Síncrono: sigue el dedo en el mismo frame, sin despachar corrutina.
                             liveDragProgress = (liveDragProgress + deltaUp / distancePx).coerceIn(0f, 1f)
                         }
 
                         MiniDragAxis.Horizontal -> {
+                            // Lee el delta ANTES de consumir: positionChange() devuelve Offset.Zero si el
+                            // evento ya está consumido (por eso la tarjeta no seguía al dedo y el swipe
+                            // solo se confirmaba por fling).
+                            val dx = change.positionChange().x
                             change.consume()
-                            dragX += change.positionChange().x
+                            dragX += dx
                             // Síncrono: la tarjeta sigue el acumulado (misma dirección) sin corrutina.
                             liveOffsetX = dragX
                         }
