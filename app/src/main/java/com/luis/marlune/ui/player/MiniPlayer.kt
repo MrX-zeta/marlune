@@ -79,6 +79,9 @@ private val ExpandLift = 20.dp
 private const val TrackCommitFraction = 0.22f // ~22 % del ancho para confirmar cambio de pista
 private const val TrackFlingVelocity = 1000f
 private const val TapHighlightDelayMillis = 100L // espera antes de iluminar (evita destello al deslizar)
+// Ventana para que la confirmación del cambio de pista tome el relevo del arrastre antes de que el
+// fallback asiente la tarjeta (evita el drift al centro; solo actúa si NO llega la transición).
+private const val SettleFallbackMillis = 160L
 
 private enum class MiniDragAxis { Undecided, ExpandUp, Horizontal, Down }
 
@@ -285,28 +288,32 @@ fun MiniPlayer(
                     MiniDragAxis.Horizontal -> {
                         val width = size.width.toFloat()
                         // Solo elige QUÉ comando pedir; la animación de confirmación la corre el
-                        // observador de trackTransition (fuente única de dirección). Si NO hay pista
-                        // a la que saltar (extremo/cola de 1), la tarjeta REGRESA con spring.
-                        fun settleBack() {
-                            releaseJob.value?.cancel()
-                            releaseJob.value = scope.launch {
-                                if (reducedMotion) {
-                                    liveOffsetX = 0f
-                                } else {
-                                    animate(
-                                        initialValue = liveOffsetX,
-                                        targetValue = 0f,
-                                        animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium),
-                                    ) { value, _ -> liveOffsetX = value }
-                                }
-                            }
-                        }
-                        when (
+                        // observador de trackTransition (fuente única de dirección). `requested` = si
+                        // de verdad se pidió un salto (hay pista a la que ir).
+                        val requested = when (
                             resolveTrackSwipe(dragX, velocity.x, width * TrackCommitFraction, TrackFlingVelocity)
                         ) {
-                            TrackSwipeDirection.NEXT -> if (uiState.hasNext) onNext() else settleBack()
-                            TrackSwipeDirection.PREVIOUS -> if (uiState.hasPrevious) onPrevious() else settleBack()
-                            null -> settleBack()
+                            TrackSwipeDirection.NEXT -> uiState.hasNext.also { if (it) onNext() }
+                            TrackSwipeDirection.PREVIOUS -> uiState.hasPrevious.also { if (it) onPrevious() }
+                            null -> false
+                        }
+                        releaseJob.value?.cancel()
+                        releaseJob.value = scope.launch {
+                            // Si se pidió cambio de pista, espera a que el observador de trackTransition
+                            // tome el relevo (cancela este job) y haga el slide DESDE la posición del
+                            // dedo, sin drift previo hacia el centro (ese drift era el "pequeño delay").
+                            // Si no llega la transición (extremo o hasNext/hasPrevious obsoleto), este
+                            // fallback asienta a 0 para que la tarjeta no quede CORTADA.
+                            if (requested) delay(SettleFallbackMillis)
+                            if (reducedMotion) {
+                                liveOffsetX = 0f
+                            } else {
+                                animate(
+                                    initialValue = liveOffsetX,
+                                    targetValue = 0f,
+                                    animationSpec = spring(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium),
+                                ) { value, _ -> liveOffsetX = value }
+                            }
                         }
                     }
 

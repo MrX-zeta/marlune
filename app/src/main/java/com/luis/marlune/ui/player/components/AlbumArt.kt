@@ -46,8 +46,8 @@ private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
 /**
  * Carátula cuadrada con gestos de EJE RESTRINGIDO (se bloquea la dirección dominante al
  * superar el touch slop, sin movimiento libre en 2D):
- *  - Horizontal → cambia de pista: derecha = siguiente, izquierda = anterior (preferencia
- *    explícita). La carátula sigue el dedo vía [trackOffset] (hoisteado para que el título de
+ *  - Horizontal → cambia de pista: izquierda = siguiente, derecha = anterior (convención estándar
+ *    tipo Spotify). La carátula sigue el dedo vía [trackOffset] (hoisteado para que el título de
  *    Now Playing acompañe el mismo desplazamiento) y, al superar el umbral de distancia o
  *    velocidad, sale acelerando y la nueva entra desde el lado opuesto (cross-slide).
  *  - Vertical hacia abajo → minimizar: NO mueve la carátula por libre; reporta el avance a la
@@ -146,17 +146,19 @@ fun AlbumArt(
                                 // el offset neto + fling. La dirección de la animación de
                                 // confirmación NO se decide aquí: la corre el observador de
                                 // `trackTransition` (fuente única), derivándola del cambio de pista.
-                                // Si NO hay pista a la que saltar (extremo de cola / cola de 1), la
-                                // carátula REGRESA con spring; nunca queda cortada a medias.
                                 when (
                                     resolveTrackSwipe(dragX, velocity.x, horizontalThreshold, HorizontalFlingVelocity)
                                 ) {
-                                    TrackSwipeDirection.NEXT ->
-                                        if (canGoNext) onNext() else scope.launch { offsetX.animateTo(0f, settleSpring()) }
-                                    TrackSwipeDirection.PREVIOUS ->
-                                        if (canGoPrevious) onPrevious() else scope.launch { offsetX.animateTo(0f, settleSpring()) }
-                                    null -> scope.launch { offsetX.animateTo(0f, settleSpring()) }
+                                    TrackSwipeDirection.NEXT -> if (canGoNext) onNext()
+                                    TrackSwipeDirection.PREVIOUS -> if (canGoPrevious) onPrevious()
+                                    null -> {}
                                 }
+                                // Red de seguridad: SIEMPRE se asienta a 0 al soltar. Si el cambio de
+                                // pista ocurre, su `runTrackSlideAnimation` toma este MISMO Animatable
+                                // y hace el cross-slide (cancela este settle por el mutatorMutex). Si
+                                // NO llega transición (extremo, hasNext/hasPrevious obsoleto o carga
+                                // DIRECT), esto evita que la carátula quede CORTADA a medias.
+                                scope.launch { offsetX.animateTo(0f, settleSpring()) }
                             }
 
                             DragAxis.VerticalDown -> onCollapseRelease(velocity.y)
