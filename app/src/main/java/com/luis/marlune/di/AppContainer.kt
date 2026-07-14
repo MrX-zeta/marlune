@@ -8,6 +8,7 @@ import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.MusicRepository
+import com.luis.marlune.data.repository.PlaylistRepository
 import com.luis.marlune.data.repository.SavedSessionRepository
 import com.luis.marlune.playback.PlaybackRepository
 import kotlinx.coroutines.CoroutineScope
@@ -43,13 +44,16 @@ class AppContainer(context: Context) {
         context.applicationContext,
         MarluneDatabase::class.java,
         "marlune.db",
-    ).addMigrations(MarluneDatabase.MIGRATION_1_2).build()
+    ).addMigrations(MarluneDatabase.MIGRATION_1_2, MarluneDatabase.MIGRATION_2_3).build()
 
     /** Historial de reproducción (Room) resuelto contra la biblioteca real. */
     val historyRepository: HistoryRepository = HistoryRepository(database.playHistoryDao(), musicRepository)
 
     /** Favoritos ("Me gusta") (Room) resueltos contra la biblioteca real. */
     val favoritesRepository: FavoritesRepository = FavoritesRepository(database.favoriteDao(), musicRepository)
+
+    /** Listas de reproducción del usuario (Room). */
+    val playlistRepository: PlaylistRepository = PlaylistRepository(database.playlistDao())
 
     private val sessionStore = SessionStore(context.applicationContext)
 
