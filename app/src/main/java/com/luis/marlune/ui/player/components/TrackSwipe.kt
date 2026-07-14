@@ -19,10 +19,9 @@ enum class TrackSwipeDirection { NEXT, PREVIOUS }
  * del swipe; NO decide la dirección de la animación (esa sale del cambio de pista, ver
  * [runTrackSlideAnimation]).
  *
- * Convención alineada con la animación canónica (estándar): arrastrar a la IZQUIERDA (negativo) =
- * siguiente —el contenido avanza a la izquierda y la nueva entra por la derecha—; a la DERECHA =
- * anterior. Así la fase de arrastre (la carátula sigue al dedo) y la confirmación van en la MISMA
- * dirección, sin inversión.
+ * Convención de producto: DERECHA (positivo) = siguiente; IZQUIERDA (negativo) = anterior. La
+ * carátula sigue al dedo y la confirmación continúa en la MISMA dirección (ver el `exitSign` de
+ * [runTrackSlideAnimation]), sin inversión.
  */
 fun resolveTrackSwipe(
     netOffsetX: Float,
@@ -33,7 +32,7 @@ fun resolveTrackSwipe(
     val committed = abs(netOffsetX) >= commitDistancePx || abs(velocityX) >= flingVelocity
     if (!committed) return null
     val directional = if (netOffsetX != 0f) netOffsetX else velocityX
-    return if (directional < 0f) TrackSwipeDirection.NEXT else TrackSwipeDirection.PREVIOUS
+    return if (directional > 0f) TrackSwipeDirection.NEXT else TrackSwipeDirection.PREVIOUS
 }
 
 /**
@@ -53,9 +52,10 @@ suspend fun runTrackSlideAnimation(
     widthPx: Float,
     reducedMotion: Boolean,
 ) {
-    // ÚNICO punto que mapea dirección de cambio de pista → dirección de animación:
-    // siguiente → la actual sale por la izquierda (−) y la nueva entra por la derecha.
-    val exitSign = if (forward) -1f else 1f
+    // ÚNICO punto que mapea dirección de cambio de pista → dirección de animación, alineado con el
+    // swipe (derecha = siguiente): siguiente → la actual sale por la DERECHA (+) y la nueva entra
+    // por la izquierda; anterior → al revés.
+    val exitSign = if (forward) 1f else -1f
     if (reducedMotion) {
         offsetX.snapTo(0f)
         return
