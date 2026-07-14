@@ -51,6 +51,8 @@ data class PlaybackState(
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val currentIndex: Int = 0,
     val queueSize: Int = 0,
+    /** Ids (`_ID` de MediaStore) de la cola en orden, para persistir la sesión. */
+    val queueIds: List<Long> = emptyList(),
     val transitionId: Int = 0,
     val transition: TrackChange = TrackChange.DIRECT,
 )
@@ -189,11 +191,17 @@ class PlaybackRepository(context: Context) {
             repeatMode = c.repeatMode.toRepeatMode(),
             currentIndex = c.currentMediaItemIndex,
             queueSize = c.mediaItemCount,
+            queueIds = c.queueIds(),
             transitionId = transitionId,
             transition = transitionKind,
         )
         syncTicker(c.isPlaying)
     }
+
+    // Recorre la cola solo en eventos del player (no en cada tick de posición: el ticker copia el
+    // estado sin llamar a refresh()), así que reconstruir la lista aquí es barato.
+    private fun MediaController.queueIds(): List<Long> =
+        (0 until mediaItemCount).mapNotNull { getMediaItemAt(it).mediaId.toLongOrNull() }
 
     /** Dirección canónica de un salto por índice (incluye el wrap última→primera al auto-avanzar). */
     private fun forwardFrom(old: Int, new: Int, size: Int): Boolean = when {

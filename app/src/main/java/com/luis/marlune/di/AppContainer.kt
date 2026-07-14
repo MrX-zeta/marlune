@@ -3,10 +3,12 @@ package com.luis.marlune.di
 import android.content.Context
 import androidx.room.Room
 import com.luis.marlune.data.database.MarluneDatabase
+import com.luis.marlune.data.datastore.SessionStore
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.MusicRepository
+import com.luis.marlune.data.repository.SavedSessionRepository
 import com.luis.marlune.playback.PlaybackRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -15,9 +17,11 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val PlayRecordDelayMs = 5_000L // ~5s reproduciendo antes de registrar (evita skips)
+private const val SessionSaveIntervalMs = 10_000L // guardado periódico de la posición mientras suena
 
 /**
  * Contenedor de dependencias manual (sin framework de DI). Vive en la Application y expone los
@@ -47,8 +51,14 @@ class AppContainer(context: Context) {
     /** Favoritos ("Me gusta") (Room) resueltos contra la biblioteca real. */
     val favoritesRepository: FavoritesRepository = FavoritesRepository(database.favoriteDao(), musicRepository)
 
+    private val sessionStore = SessionStore(context.applicationContext)
+
+    /** Sesión de reproducción persistida (DataStore) resuelta contra la biblioteca. */
+    val savedSessionRepository: SavedSessionRepository = SavedSessionRepository(sessionStore, musicRepository)
+
     init {
         recordPlaysToHistory()
+        persistSession()
     }
 
     /**
@@ -67,6 +77,35 @@ class AppContainer(context: Context) {
                         historyRepository.recordPlay(songId)
                     }
                 }
+        }
+    }
+
+    /**
+     * Persiste la sesión (cola + índice + posición): guarda al cambiar cola/índice o al pausar
+     * (`collectLatest` reinicia y guarda al instante), y periódicamente mientras suena (para
+     * mantener la posición fresca ante un cierre en frío). NUNCA sobrescribe con estado vacío, así
+     * que un arranque en frío sin reproducir no borra la sesión guardada.
+     */
+    private fun persistSession() {
+        appScope.launch {
+            playbackRepository.state
+                .map { Triple(it.hasItem, it.currentIndex to it.mediaId, it.isPlaying) }
+                .distinctUntilChanged()
+                .collectLatest { (hasItem, _, _) ->
+                    if (!hasItem) return@collectLatest
+                    saveSessionNow()
+                    while (isActive) {
+                        delay(SessionSaveIntervalMs)
+                        saveSessionNow()
+                    }
+                }
+        }
+    }
+
+    private suspend fun saveSessionNow() {
+        val state = playbackRepository.state.value
+        if (state.hasItem && state.queueIds.isNotEmpty()) {
+            savedSessionRepository.save(state.queueIds, state.currentIndex, state.positionMs)
         }
     }
 }
