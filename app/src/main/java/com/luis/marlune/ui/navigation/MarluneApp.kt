@@ -39,6 +39,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.components.rememberHapticTick
@@ -94,7 +95,8 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     }
 
     val reducedMotion = LocalReducedMotion.current
-    val playerViewModel: PlayerViewModel = viewModel(factory = PlayerViewModel.factory(playback))
+    val playerViewModel: PlayerViewModel =
+        viewModel(factory = PlayerViewModel.factory(playback, rememberFavoritesRepository()))
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
 
     // Acento dinámico COMPARTIDO: se extrae (Palette, fuera del hilo principal) al cambiar la pista
