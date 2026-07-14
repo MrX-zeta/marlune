@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.luis.marlune.data.database.MarluneDatabase
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
+import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.playback.PlaybackRepository
@@ -38,10 +39,13 @@ class AppContainer(context: Context) {
         context.applicationContext,
         MarluneDatabase::class.java,
         "marlune.db",
-    ).build()
+    ).addMigrations(MarluneDatabase.MIGRATION_1_2).build()
 
     /** Historial de reproducción (Room) resuelto contra la biblioteca real. */
     val historyRepository: HistoryRepository = HistoryRepository(database.playHistoryDao(), musicRepository)
+
+    /** Favoritos ("Me gusta") (Room) resueltos contra la biblioteca real. */
+    val favoritesRepository: FavoritesRepository = FavoritesRepository(database.favoriteDao(), musicRepository)
 
     init {
         recordPlaysToHistory()
