@@ -29,6 +29,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.LibraryMusic
 import com.luis.marlune.R
+import com.luis.marlune.di.rememberHistoryRepository
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.domain.model.Song
@@ -49,7 +50,9 @@ fun HomeRoute(
     onSeeAllRecent: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
-    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.factory(rememberMusicRepository())),
+    viewModel: HomeViewModel = viewModel(
+        factory = HomeViewModel.factory(rememberMusicRepository(), rememberHistoryRepository()),
+    ),
     playback: PlaybackRepository = rememberPlaybackRepository(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -106,10 +109,17 @@ fun HomeScreen(
 
             when {
                 uiState.isLoading -> LoadingRows(count = RecentPreviewCount)
-                uiState.isEmpty -> EmptyState(
+                // Sin música en el dispositivo (distinto de "aún no has reproducido nada").
+                uiState.libraryEmpty -> EmptyState(
                     icon = Icons.Rounded.LibraryMusic,
                     title = stringResource(R.string.home_empty_title),
                     hint = stringResource(R.string.home_empty_hint),
+                )
+                // Hay música pero historial vacío: pista discreta hasta la primera reproducción.
+                uiState.recent.isEmpty() -> Text(
+                    text = stringResource(R.string.home_recent_empty),
+                    style = MarluneTheme.typography.bodyMedium,
+                    color = MarluneTheme.colors.textTertiary,
                 )
                 // Máximo 4 ítems visibles; el stagger se conserva sobre ellos.
                 else -> uiState.recent.take(RecentPreviewCount).forEachIndexed { index, song ->

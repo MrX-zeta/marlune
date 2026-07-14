@@ -10,18 +10,17 @@ enum class Greeting { MORNING, AFTERNOON, NIGHT }
 /**
  * Estado de la pantalla de Inicio.
  *
- * `recent` procede de la biblioteca LOCAL real (MediaStore). Hasta que exista historial de
- * reproducción (Room, Fase 3), "Escuchado hace poco" muestra las canciones recién añadidas.
- * `isLoading` cubre el arranque (shimmer); `isEmpty`, un dispositivo sin música.
+ * `recent` es "Escuchado hace poco" desde el historial real (Room), más reciente primero y sin
+ * duplicados. `isLoading` cubre el arranque (shimmer); `libraryEmpty`, un dispositivo sin música
+ * (distinto de historial vacío, que solo significa que aún no se ha reproducido nada).
  */
 @Immutable
 data class HomeUiState(
     val greeting: Greeting,
     val recent: List<Song>,
     val isLoading: Boolean,
+    val libraryEmpty: Boolean,
 ) {
-    val isEmpty: Boolean get() = !isLoading && recent.isEmpty()
-
     companion object {
         /** Estado de ejemplo para previews (no se usa en ejecución). */
         val Preview = HomeUiState(
@@ -30,6 +29,7 @@ data class HomeUiState(
                 sampleSong(i.toLong() + 1, listOf("Bruma", "Costa dormida", "Vidrio", "Reflejo", "Sal")[i], "Lún")
             },
             isLoading = false,
+            libraryEmpty = false,
         )
 
         private fun sampleSong(id: Long, title: String, artist: String) = Song(

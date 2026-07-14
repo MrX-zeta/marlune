@@ -30,6 +30,7 @@
     <string name="home_see_all">Ver todo</string>
     <string name="home_empty_title">Sin música todavía</string>
     <string name="home_empty_hint">Copia canciones a tu dispositivo y aparecerán aquí, solas.</string>
+    <string name="home_recent_empty">Reproduce una canción y aparecerá aquí.</string>
     <string name="shortcut_liked">Me gusta</string>
     <string name="shortcut_playlists">Listas</string>
     <string name="shortcut_albums">Álbumes</string>
