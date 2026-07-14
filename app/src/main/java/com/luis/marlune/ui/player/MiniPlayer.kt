@@ -279,9 +279,10 @@ fun MiniPlayer(
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Tinte con el acento dinámico (colorScheme.primary); es la carátula compartida.
+            // Carátula real (placeholder teñido con el acento dinámico); es el elemento compartido.
             TrackThumbnail(
                 accent = MaterialTheme.colorScheme.primary,
+                artworkUri = uiState.artworkUri,
                 modifier = artModifier,
                 size = 44.dp,
                 corner = 10.dp,

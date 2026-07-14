@@ -19,6 +19,8 @@
     <string name="player_like">Me gusta</string>
     <string name="player_unlike">Quitar me gusta</string>
     <string name="player_artwork">Carátula del álbum</string>
+    <string name="player_empty_title">Aún no hay nada sonando</string>
+    <string name="player_empty_hint">Toca una canción para empezar</string>
 
     <!-- Inicio -->
     <string name="greeting_morning">Buenos días</string>
