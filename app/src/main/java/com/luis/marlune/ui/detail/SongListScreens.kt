@@ -78,6 +78,34 @@ fun HistoryRoute(contentPadding: PaddingValues, onBack: () -> Unit) {
     }
 }
 
+/** "Añadidas recientemente": canciones de la biblioteca por `DATE_ADDED` (más reciente arriba). */
+@Composable
+fun RecentlyAddedRoute(contentPadding: PaddingValues, onBack: () -> Unit) {
+    val music = rememberMusicRepository()
+    val songsFlow = remember {
+        music.library.map { state ->
+            (state as? LibraryState.Content)?.songs?.sortedByDescending { it.dateAdded }.orEmpty()
+        }
+    }
+    val vm: SongListViewModel = viewModel(
+        factory = SongListViewModel.factory(rememberPlaybackRepository(), music, songsFlow),
+    )
+    val state by vm.state.collectAsStateWithLifecycle()
+    val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
+
+    DetailScaffold(stringResource(R.string.shortcut_recently_added), onBack, contentPadding) { bottomPadding ->
+        SongListBody(
+            state = state,
+            nowPlaying = nowPlaying,
+            bottomPadding = bottomPadding,
+            emptyIcon = Icons.Rounded.MusicNote,
+            emptyTitle = stringResource(R.string.home_empty_title),
+            emptyHint = stringResource(R.string.home_empty_hint),
+            onPlay = vm::play,
+        )
+    }
+}
+
 /** Detalle de álbum: sus canciones, reproducibles. El título es el nombre del álbum. */
 @Composable
 fun AlbumDetailRoute(albumId: Long, contentPadding: PaddingValues, onBack: () -> Unit) {

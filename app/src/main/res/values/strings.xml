@@ -43,6 +43,9 @@
     <string name="shortcut_playlists">Listas</string>
     <string name="shortcut_albums">Álbumes</string>
     <string name="shortcut_artists">Artistas</string>
+    <string name="shortcut_recently_added">Añadidas recientemente</string>
+    <string name="shortcut_mix">Mix de tu biblioteca</string>
+    <string name="shortcut_continue">Continuar</string>
 
     <!-- Biblioteca -->
     <string name="library_title">Biblioteca</string>
