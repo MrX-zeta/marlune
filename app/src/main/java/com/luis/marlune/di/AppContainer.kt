@@ -3,6 +3,7 @@ package com.luis.marlune.di
 import android.content.Context
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.data.repository.MusicRepository
+import com.luis.marlune.playback.PlaybackRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,4 +20,7 @@ class AppContainer(context: Context) {
     private val mediaStoreAudioSource = MediaStoreAudioSource(context.applicationContext)
 
     val musicRepository: MusicRepository = MusicRepository(mediaStoreAudioSource, appScope)
+
+    /** Motor de reproducción (Media3), envuelto para no acoplar la UI a ExoPlayer/MediaController. */
+    val playbackRepository: PlaybackRepository = PlaybackRepository(context.applicationContext)
 }
