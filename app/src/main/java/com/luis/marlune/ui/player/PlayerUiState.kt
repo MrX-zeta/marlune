@@ -1,7 +1,7 @@
 package com.luis.marlune.ui.player
 
+import android.net.Uri
 import androidx.compose.runtime.Immutable
-import androidx.compose.ui.graphics.ImageBitmap
 import com.luis.marlune.domain.model.RepeatMode
 
 /**
@@ -14,14 +14,16 @@ import com.luis.marlune.domain.model.RepeatMode
 data class TrackTransition(val id: Int = 0, val forward: Boolean = true)
 
 /**
- * Estado inmutable de la pantalla del Reproductor.
+ * Estado inmutable de la pantalla del Reproductor, derivado de la reproducción REAL
+ * (PlaybackRepository/MediaController). Sin datos mock.
  *
- * `source` es el origen LOCAL de la cola (p. ej. "Tu biblioteca", una lista o un álbum);
- * se muestra bajo la etiqueta "REPRODUCIENDO DESDE". `artwork` es el bitmap de la carátula
- * usado para derivar el acento dinámico; `null` mientras no hay carátula.
+ * `hasTrack = false` es el estado VACÍO (nada en la cola): la UI muestra un mensaje, no una pista
+ * falsa. `artworkUri` es el content URI de la carátula (Coil la carga perezosamente); `source` es
+ * el origen LOCAL de la cola bajo "REPRODUCIENDO DESDE".
  */
 @Immutable
 data class PlayerUiState(
+    val hasTrack: Boolean,
     val title: String,
     val artist: String,
     val source: String,
@@ -31,7 +33,7 @@ data class PlayerUiState(
     val isShuffleOn: Boolean,
     val repeatMode: RepeatMode,
     val isLiked: Boolean,
-    val artwork: ImageBitmap? = null,
+    val artworkUri: Uri? = null,
     val trackTransition: TrackTransition = TrackTransition(),
 ) {
     /** Avance en [0, 1] para la marea. */
@@ -39,8 +41,24 @@ data class PlayerUiState(
         get() = if (durationMs <= 0L) 0f else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     companion object {
-        /** Estado de ejemplo para previews y arranque (biblioteca local, sin red). */
+        /** Estado vacío: nada sonando (app recién abierta o cola terminada). */
+        val Empty = PlayerUiState(
+            hasTrack = false,
+            title = "",
+            artist = "",
+            source = "",
+            positionMs = 0L,
+            durationMs = 0L,
+            isPlaying = false,
+            isShuffleOn = false,
+            repeatMode = RepeatMode.OFF,
+            isLiked = false,
+            artworkUri = null,
+        )
+
+        /** Estado de ejemplo para previews (biblioteca local, sin red). */
         val Preview = PlayerUiState(
+            hasTrack = true,
             title = "Marea nocturna",
             artist = "Lún",
             source = "Tu biblioteca",
@@ -63,6 +81,6 @@ sealed interface PlayerEvent {
     data object ToggleRepeat : PlayerEvent
     data object ToggleLike : PlayerEvent
 
-    /** Salto a una posición (ms). El seekTo real irá por el MediaController/PlaybackRepository. */
+    /** Salto a una posición (ms), aplicado sobre el MediaController real. */
     data class SeekTo(val positionMs: Long) : PlayerEvent
 }
