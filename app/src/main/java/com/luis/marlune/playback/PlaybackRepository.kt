@@ -51,6 +51,9 @@ data class PlaybackState(
     val repeatMode: RepeatMode = RepeatMode.OFF,
     val currentIndex: Int = 0,
     val queueSize: Int = 0,
+    /** Hay pista a la que saltar (según la cola y el modo de repetición). */
+    val hasNext: Boolean = false,
+    val hasPrevious: Boolean = false,
     /** Ids (`_ID` de MediaStore) de la cola en orden, para persistir la sesión. */
     val queueIds: List<Long> = emptyList(),
     val transitionId: Int = 0,
@@ -192,6 +195,8 @@ class PlaybackRepository(context: Context) {
             repeatMode = c.repeatMode.toRepeatMode(),
             currentIndex = c.currentMediaItemIndex,
             queueSize = c.mediaItemCount,
+            hasNext = c.hasNextMediaItem(),
+            hasPrevious = c.hasPreviousMediaItem(),
             queueIds = c.queueIds(),
             transitionId = transitionId,
             transition = transitionKind,

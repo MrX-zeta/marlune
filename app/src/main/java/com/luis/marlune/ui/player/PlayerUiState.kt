@@ -34,6 +34,8 @@ data class PlayerUiState(
     val isShuffleOn: Boolean,
     val repeatMode: RepeatMode,
     val isLiked: Boolean,
+    val hasNext: Boolean = false,
+    val hasPrevious: Boolean = false,
     val artworkUri: Uri? = null,
     val trackTransition: TrackTransition = TrackTransition(),
 ) {

@@ -71,6 +71,8 @@ class PlayerViewModel(
             isShuffleOn = shuffle,
             repeatMode = repeatMode,
             isLiked = songId != null && songId in favoriteIds,
+            hasNext = hasNext,
+            hasPrevious = hasPrevious,
             artworkUri = artworkUri,
             // La dirección de la animación es la única fuente del repositorio (reason de Media3).
             trackTransition = TrackTransition(transitionId, transition),
