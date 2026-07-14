@@ -87,15 +87,9 @@ fun AlbumArt(
             artwork = artwork,
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    // Solo sigue el dedo en horizontal (cambio de pista); el eje vertical
-                    // lo maneja la vista completa, así la carátula no queda flotando.
-                    translationX = offsetX.value
-                    val dragFraction = (abs(offsetX.value) / widthPx).coerceIn(0f, 1f)
-                    val shrink = 1f - dragFraction * 0.06f
-                    scaleX = shrink
-                    scaleY = shrink
-                }
+                // El detector va ANTES del graphicsLayer que traslada la carátula: así el gesto se
+                // mide en coordenadas ESTABLES y el arrastre no se retroalimenta con la traslación
+                // (evita amortiguación/dirección poco fiable). El graphicsLayer, debajo, solo pinta.
                 .pointerInput(reducedMotion, widthPx) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
@@ -170,6 +164,15 @@ fun AlbumArt(
                             else -> {}
                         }
                     }
+                }
+                .graphicsLayer {
+                    // Solo visual: la carátula sigue el dedo en horizontal (cambio de pista); va
+                    // debajo del detector, así no altera las coordenadas del gesto.
+                    translationX = offsetX.value
+                    val dragFraction = (abs(offsetX.value) / widthPx).coerceIn(0f, 1f)
+                    val shrink = 1f - dragFraction * 0.06f
+                    scaleX = shrink
+                    scaleY = shrink
                 },
         )
     }

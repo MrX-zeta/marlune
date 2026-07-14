@@ -128,16 +128,11 @@ fun MiniPlayer(
         }
     }
 
+    // IMPORTANTE: el detector de gestos va ANTES del graphicsLayer que traslada la tarjeta. Si fuera
+    // al revés, el pointerInput viviría dentro de la capa que él mismo mueve y las coordenadas del
+    // arrastre se retroalimentarían (amortiguan/enturbian el desplazamiento → delay y dirección poco
+    // fiable). Aquí el gesto se mide en el espacio estable del padre; el graphicsLayer solo pinta.
     val expandGesture = Modifier
-        .graphicsLayer {
-            // Efecto acoplado: la tarjeta (y con ella la carátula compartida) se levanta y crece
-            // al subir, o acompaña el dedo en horizontal al cambiar de pista.
-            translationX = offsetX.value
-            translationY = -dragProgress.value * ExpandLift.toPx()
-            val grow = 1f + dragProgress.value * 0.06f
-            scaleX = grow
-            scaleY = grow
-        }
         .pointerInput(reducedMotion) {
             val touchSlop = viewConfiguration.touchSlop
             val distancePx = ExpandDragDistance.toPx()
@@ -275,6 +270,15 @@ fun MiniPlayer(
                     else -> {}
                 }
             }
+        }
+        .graphicsLayer {
+            // Efecto acoplado (solo visual): la tarjeta se levanta y crece al subir, o acompaña el
+            // dedo en horizontal al cambiar de pista. No afecta a las coordenadas del gesto (va debajo).
+            translationX = offsetX.value
+            translationY = -dragProgress.value * ExpandLift.toPx()
+            val grow = 1f + dragProgress.value * 0.06f
+            scaleX = grow
+            scaleY = grow
         }
 
     PressableCard(
