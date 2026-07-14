@@ -24,7 +24,13 @@
     <string name="playlist_delete_title">¿Borrar esta lista?</string>
     <string name="playlist_delete_body">No se borrarán canciones ni archivos, solo la lista.</string>
     <string name="playlist_detail_empty_title">Lista vacía</string>
-    <string name="playlist_detail_empty_hint">Añade canciones (próximamente).</string>
+    <string name="playlist_detail_empty_hint">Añade canciones con «Añadir a lista» desde los 3 puntos de una pista.</string>
+    <string name="menu_add_to_playlist">Añadir a lista</string>
+    <string name="menu_remove_from_playlist">Quitar de la lista</string>
+    <string name="add_to_playlist_title">Añadir a lista</string>
+    <string name="playlist_new_option">+ Nueva lista</string>
+    <string name="playlist_song_added">Añadida a %1$s</string>
+    <string name="playlist_song_exists">Ya está en la lista</string>
     <string name="action_create">Crear</string>
     <string name="action_save">Guardar</string>
     <string name="action_cancel">Cancelar</string>

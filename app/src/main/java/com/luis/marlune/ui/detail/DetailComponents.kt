@@ -20,6 +20,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
@@ -32,6 +36,8 @@ import com.luis.marlune.R
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
 import com.luis.marlune.domain.model.Song
+import com.luis.marlune.ui.components.ContextMenuItem
+import com.luis.marlune.ui.library.AddToPlaylistSheet
 import com.luis.marlune.ui.library.LibraryEntry
 import com.luis.marlune.ui.library.components.LibraryRow
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -101,7 +107,12 @@ fun EntryList(
     modifier: Modifier = Modifier,
     nowPlayingId: Long? = null,
     isPlaying: Boolean = false,
+    // Solo para listas de CANCIONES: "Añadir a lista" y (en el detalle de una lista) "Quitar".
+    enableAddToPlaylist: Boolean = false,
+    onRemoveFromPlaylist: ((Long) -> Unit)? = null,
 ) {
+    var addTarget by remember { mutableStateOf<Long?>(null) }
+
     LazyColumn(
         state = rememberLazyListState(),
         modifier = modifier.fillMaxSize(),
@@ -109,18 +120,30 @@ fun EntryList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         itemsIndexed(entries, key = { _, e -> e.id }, contentType = { _, _ -> "libraryRow" }) { index, entry ->
+            val menu = buildList {
+                if (enableAddToPlaylist) {
+                    add(ContextMenuItem(R.string.menu_add_to_playlist) { addTarget = entry.id })
+                }
+                if (onRemoveFromPlaylist != null) {
+                    add(ContextMenuItem(R.string.menu_remove_from_playlist) { onRemoveFromPlaylist(entry.id) })
+                }
+            }
             com.luis.marlune.ui.components.StaggeredReveal(index = index, enabled = index < StaggerVisibleCount) {
                 LibraryRow(
                     entry = entry,
                     coverIcon = coverIcon,
                     coverShape = coverShape,
                     onClick = { onEntryClick(entry) },
-                    menuItems = emptyList(),
+                    menuItems = menu,
                     isCurrent = nowPlayingId != null && entry.id == nowPlayingId,
                     isPlaying = isPlaying,
                 )
             }
         }
+    }
+
+    addTarget?.let { songId ->
+        AddToPlaylistSheet(songId = songId, onDismiss = { addTarget = null })
     }
 }
 

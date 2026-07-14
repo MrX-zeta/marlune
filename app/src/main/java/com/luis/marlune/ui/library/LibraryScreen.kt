@@ -206,8 +206,10 @@ private fun LibraryList(
     val isArtist = filter == LibraryFilter.ARTISTS
     val coverShape = if (filter == LibraryFilter.PLAYLISTS || isArtist) CircleCover else RoundedCover
     val coverIcon = coverIconFor(isArtist)
-    // Menú común a todas las filas: se construye una vez, no por fila ni por recomposición.
-    val menuItems = remember { demoMenuItems() }
+    // "Añadir a lista" solo en Canciones (el id de la fila es el _ID de la pista). El selector se
+    // hospeda aquí; álbumes/artistas no llevan menú.
+    val addToPlaylist = filter == LibraryFilter.SONGS
+    var addTarget by remember { mutableStateOf<Long?>(null) }
 
     // LazyColumn persistente: solo compone (y pide carátula a Coil) las filas VISIBLES; keys estables
     // por id + `contentType` único para reciclar slots al cambiar de chip (sin recargar arte). El
@@ -239,13 +241,21 @@ private fun LibraryList(
                         coverIcon = coverIcon,
                         coverShape = coverShape,
                         onClick = { onEntryClick(entry) },
-                        menuItems = menuItems,
+                        menuItems = if (addToPlaylist) {
+                            listOf(ContextMenuItem(R.string.menu_add_to_playlist) { addTarget = entry.id })
+                        } else {
+                            emptyList()
+                        },
                         isCurrent = highlightId != null && entry.id == highlightId,
                         isPlaying = nowPlaying.isPlaying,
                     )
                 }
             }
         }
+    }
+
+    addTarget?.let { songId ->
+        AddToPlaylistSheet(songId = songId, onDismiss = { addTarget = null })
     }
 }
 
@@ -277,13 +287,6 @@ private fun LibraryTopBar() {
         }
     }
 }
-
-// Ítems de ejemplo (acciones reales en fases posteriores); labelRes son constantes, no requiere composición.
-private fun demoMenuItems(): List<ContextMenuItem> = listOf(
-    ContextMenuItem(R.string.library_menu_play) {},
-    ContextMenuItem(R.string.library_menu_add_queue) {},
-    ContextMenuItem(R.string.library_menu_add_playlist) {},
-)
 
 @Preview(showBackground = true, backgroundColor = 0xFF0A0910, heightDp = 800)
 @Composable
