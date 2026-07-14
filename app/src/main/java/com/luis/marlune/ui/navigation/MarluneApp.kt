@@ -23,17 +23,24 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
 import com.luis.marlune.di.rememberPlaybackRepository
+import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.components.rememberHapticTick
 import com.luis.marlune.ui.home.HomeRoute
 import com.luis.marlune.ui.library.LibraryRoute
@@ -89,6 +96,23 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     val reducedMotion = LocalReducedMotion.current
     val playerViewModel: PlayerViewModel = viewModel(factory = PlayerViewModel.factory(playback))
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
+
+    // Acento dinámico COMPARTIDO: se extrae (Palette, fuera del hilo principal) al cambiar la pista
+    // ACTUAL —aquí, siempre compuesto—, no dentro de Now Playing. Así el color se refresca en tiempo
+    // real en mini-player, marea y toggles al seleccionar, sin abrir el reproductor. El tema lo anima
+    // (240 ms) sobre el acento; fondos y texto siguen neutros. Cacheado por el `artworkUri` (la key).
+    val accentController = LocalMarluneAccentController.current
+    val accentContext = LocalContext.current
+    LaunchedEffect(playerState.artworkUri) {
+        val uri = playerState.artworkUri
+        val bitmap = if (uri == null) null else runCatching {
+            val result = accentContext.imageLoader.execute(
+                ImageRequest.Builder(accentContext).data(uri).allowHardware(false).size(256).build(),
+            )
+            (result as? SuccessResult)?.drawable?.toBitmap()
+        }.getOrNull()
+        if (bitmap != null) accentController.updateFromArtwork(bitmap) else accentController.reset()
+    }
 
     var selected by rememberSaveable { mutableStateOf(MarluneDestination.HOME) }
     var playerExpanded by rememberSaveable { mutableStateOf(false) }
