@@ -5,6 +5,14 @@
     <string name="nav_home">Inicio</string>
     <string name="nav_library">Biblioteca</string>
     <string name="nav_search">Buscar</string>
+    <string name="nav_back">Atrás</string>
+
+    <!-- Pantallas de detalle -->
+    <string name="liked_empty_title">Aún no tienes favoritas</string>
+    <string name="liked_empty_hint">Marca canciones con el corazón y aparecerán aquí.</string>
+    <string name="history_empty_title">Aún no hay historial</string>
+    <string name="playlists_empty_title">Aún no hay listas</string>
+    <string name="playlists_empty_hint">Pronto podrás crear tus propias listas.</string>
 
     <!-- Reproductor -->
     <string name="player_playing_from">Reproduciendo desde</string>
