@@ -116,20 +116,23 @@ fun LibraryRow(
             )
         }
 
-        // "3 puntos": IconButton garantiza 48 dp de toque; ancla del menú contextual.
-        Box {
-            IconButton(onClick = { menuExpanded = true }) {
-                Icon(
-                    imageVector = Icons.Rounded.MoreVert,
-                    contentDescription = stringResource(R.string.library_more_options),
-                    tint = MarluneTheme.colors.textSecondary,
+        // "3 puntos": IconButton garantiza 48 dp de toque; ancla del menú contextual. Se omite si
+        // no hay acciones (p. ej. en las pantallas de detalle, que reutilizan la fila sin menú).
+        if (menuItems.isNotEmpty()) {
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Rounded.MoreVert,
+                        contentDescription = stringResource(R.string.library_more_options),
+                        tint = MarluneTheme.colors.textSecondary,
+                    )
+                }
+                ContextMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    items = menuItems,
                 )
             }
-            ContextMenu(
-                expanded = menuExpanded,
-                onDismissRequest = { menuExpanded = false },
-                items = menuItems,
-            )
         }
     }
 }
