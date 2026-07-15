@@ -61,6 +61,13 @@ class PlayerViewModel(
         combine(playback.state, favorites.favoriteIds) { state, favIds -> state.toUiState(favIds) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerUiState.Empty)
 
+    /** Cola real ("A continuación"), reactiva a añadir/quitar/mover/auto-avance. */
+    val queue: StateFlow<QueueUiState> =
+        combine(playback.queue, playback.state) { items, state ->
+            QueueUiState(items = items, currentIndex = state.currentIndex, isPlaying = state.isPlaying)
+        }.distinctUntilChanged()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), QueueUiState.Empty)
+
     // --- Letras (local + red opt-in) ---
     private data class LyricsLoad(
         val loading: Boolean,
@@ -141,6 +148,12 @@ class PlayerViewModel(
         val id = currentSongId ?: return
         viewModelScope.launch { favorites.toggle(id) }
     }
+
+    /** Salta a la pista [index] de la cola (sin rearmarla). */
+    fun playQueueItem(index: Int) = playback.playQueueItem(index)
+
+    /** Quita la pista [index] de la cola (no toca biblioteca ni archivos). */
+    fun removeQueueItem(index: Int) = playback.removeQueueItem(index)
 
     /**
      * Concede la carpeta SAF elegida en el contexto de la canción actual. Si esa carpeta NO contiene

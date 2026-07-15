@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -126,6 +127,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
             ),
         )
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
+    val queueState by playerViewModel.queue.collectAsStateWithLifecycle()
     val lyricsState by playerViewModel.lyricsState.collectAsStateWithLifecycle()
     val lyricsFolderError by playerViewModel.folderError.collectAsStateWithLifecycle()
     val internetLyricsEnabled by playerViewModel.internetLyricsEnabled.collectAsStateWithLifecycle()
@@ -165,6 +167,11 @@ fun MarluneApp(modifier: Modifier = Modifier) {
 
     val transitionMs = if (reducedMotion) 0 else 280
 
+    // Retiene el estado GUARDABLE de cada rama (shell colapsado / reproductor) aunque salga de
+    // composición al expandir: así el shell conserva scroll, chip y pestaña al minimizar. No altera
+    // el elemento compartido ni el BackHandler; solo preserva estado. Aplica igual a Inicio/Buscar.
+    val contentStateHolder = rememberSaveableStateHolder()
+
     SharedTransitionLayout(modifier = modifier.fillMaxSize()) {
         AnimatedContent(
             targetState = playerExpanded,
@@ -174,6 +181,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
             },
             label = "playerExpand",
         ) { expanded ->
+          contentStateHolder.SaveableStateProvider(expanded) {
             // Asentamiento de "marea": decelerate, sin rebote, ≤300 ms. Común a la carátula
             // (elemento compartido) y al texto (bounds compartidos).
             val settle = BoundsTransform { _, _ -> tween(transitionMs, easing = LinearOutSlowInEasing) }
@@ -223,6 +231,9 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                         playerExpanded = false
                         navController.navigate(Routes.SETTINGS)
                     },
+                    queue = queueState,
+                    onJumpToQueueItem = playerViewModel::playQueueItem,
+                    onRemoveQueueItem = playerViewModel::removeQueueItem,
                     artModifier = artModifier,
                     titleModifier = titleModifier,
                     artistModifier = artistModifier,
@@ -241,6 +252,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     miniArtistModifier = artistModifier,
                 )
             }
+          }
         }
     }
 }

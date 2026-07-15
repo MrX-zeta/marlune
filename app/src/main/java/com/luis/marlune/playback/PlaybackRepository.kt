@@ -61,6 +61,17 @@ data class PlaybackState(
 )
 
 /**
+ * Una entrada de la cola real del `MediaController`, con los metadatos que la UI necesita para
+ * pintarla (sin re-consultar la biblioteca). [mediaId] es el `_ID` de MediaStore como texto.
+ */
+data class QueueItem(
+    val mediaId: String,
+    val title: String,
+    val artist: String,
+    val artworkUri: Uri?,
+)
+
+/**
  * Envuelve Media3 para que los ViewModels/UI no se acoplen a ExoPlayer ni al `MediaController`.
  *
  * El controlador se conecta de forma ASÍNCRONA al [MarluneMediaService] (`ListenableFuture`); su
@@ -84,6 +95,11 @@ class PlaybackRepository(context: Context) {
 
     private val _state = MutableStateFlow(PlaybackState())
     val state: StateFlow<PlaybackState> = _state.asStateFlow()
+
+    // Cola real como lista de items (con metadatos). Se reconstruye en los eventos del player
+    // (añadir/quitar/mover/auto-avance), no en los ticks de posición. Para la UI de "A continuación".
+    private val _queue = MutableStateFlow<List<QueueItem>>(emptyList())
+    val queue: StateFlow<List<QueueItem>> = _queue.asStateFlow()
 
     // Naturaleza del último cambio de pista, derivada del `reason` de Media3 (fuente única).
     private var transitionId = 0
@@ -193,6 +209,20 @@ class PlaybackRepository(context: Context) {
 
     fun playPause() = controller?.let { if (it.isPlaying) it.pause() else it.play() }
 
+    /** Salta a la pista de la cola en [index] sin rearmar la cola (seek al item) y reproduce. */
+    fun playQueueItem(index: Int) {
+        val c = controller ?: return
+        if (index !in 0 until c.mediaItemCount) return
+        c.seekToDefaultPosition(index)
+        c.play()
+    }
+
+    /** Quita de la cola la pista en [index] (no toca la biblioteca ni el archivo). */
+    fun removeQueueItem(index: Int) {
+        val c = controller ?: return
+        if (index in 0 until c.mediaItemCount) c.removeMediaItem(index)
+    }
+
     fun next() {
         controller?.seekToNextMediaItem()
     }
@@ -235,8 +265,21 @@ class PlaybackRepository(context: Context) {
             transitionId = transitionId,
             transition = transitionKind,
         )
+        _queue.value = c.queueItems()
         syncTicker(c.isPlaying)
     }
+
+    /** Snapshot de la cola con metadatos (solo en eventos del player; barato). */
+    private fun MediaController.queueItems(): List<QueueItem> =
+        (0 until mediaItemCount).map { i ->
+            val item = getMediaItemAt(i)
+            QueueItem(
+                mediaId = item.mediaId,
+                title = item.mediaMetadata.title?.toString().orEmpty(),
+                artist = item.mediaMetadata.artist?.toString().orEmpty(),
+                artworkUri = item.mediaMetadata.artworkUri,
+            )
+        }
 
     // Recorre la cola solo en eventos del player (no en cada tick de posición: el ticker copia el
     // estado sin llamar a refresh()), así que reconstruir la lista aquí es barato.

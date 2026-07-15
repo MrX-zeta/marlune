@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
@@ -86,6 +87,9 @@ fun PlayerScreen(
     onMinimize: () -> Unit,
     onLyricsFolderPicked: (Uri) -> Unit,
     onOpenSettings: () -> Unit,
+    queue: QueueUiState,
+    onJumpToQueueItem: (Int) -> Unit,
+    onRemoveQueueItem: (Int) -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
     titleModifier: Modifier = Modifier,
@@ -105,6 +109,8 @@ fun PlayerScreen(
 
     // Carátula ↔ letras: un tap sobre la carátula alterna (lo resuelve el detector de AlbumArt).
     var showLyrics by remember { mutableStateOf(false) }
+    // Panel "A continuación": se abre desde la barra superior, sin minimizar Now Playing.
+    var showQueue by remember { mutableStateOf(false) }
     // Pick de carpeta SAF para leer .lrc (permiso por árbol, persistente). Solo desde el vacío.
     val folderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -211,6 +217,7 @@ fun PlayerScreen(
             PlayerTopBar(
                 source = uiState.source,
                 onMinimize = { showLyrics = false; onMinimize() },
+                onOpenQueue = { showQueue = true },
                 modifier = chrome,
             )
 
@@ -292,6 +299,16 @@ fun PlayerScreen(
 
             Spacer(Modifier.weight(1f))
         }
+
+        // Panel "A continuación": overlay modal sobre Now Playing (no minimiza; el chevron se queda).
+        if (showQueue) {
+            QueueSheet(
+                queue = queue,
+                onJumpTo = onJumpToQueueItem,
+                onRemove = onRemoveQueueItem,
+                onDismiss = { showQueue = false },
+            )
+        }
     }
 }
 
@@ -351,6 +368,7 @@ private fun PlayerEmpty(
 private fun PlayerTopBar(
     source: String,
     onMinimize: () -> Unit,
+    onOpenQueue: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -379,8 +397,14 @@ private fun PlayerTopBar(
                 color = MarluneTheme.colors.textPrimary,
             )
         }
-        // Equilibra el ancho del IconButton izquierdo para centrar el bloque.
-        Spacer(Modifier.width(48.dp))
+        // Acceso a la cola ("A continuación"); ocupa el lugar del antiguo espaciador (mantiene el centro).
+        IconButton(onClick = onOpenQueue) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.QueueMusic,
+                contentDescription = stringResource(R.string.player_queue),
+                tint = MarluneTheme.colors.textPrimary,
+            )
+        }
     }
 }
 
@@ -471,6 +495,9 @@ private fun PlayerScreenPlayingPreview() {
             onMinimize = {},
             onLyricsFolderPicked = {},
             onOpenSettings = {},
+            queue = QueueUiState.Empty,
+            onJumpToQueueItem = {},
+            onRemoveQueueItem = {},
         )
     }
 }
@@ -488,6 +515,9 @@ private fun PlayerScreenPausedPreview() {
             onMinimize = {},
             onLyricsFolderPicked = {},
             onOpenSettings = {},
+            queue = QueueUiState.Empty,
+            onJumpToQueueItem = {},
+            onRemoveQueueItem = {},
         )
     }
 }
