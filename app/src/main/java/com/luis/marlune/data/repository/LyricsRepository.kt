@@ -83,42 +83,60 @@ class LyricsRepository(
 
     /** Letra LOCAL de [song] (o `null`). Cacheada; segura para llamar por cada cambio de pista. */
     suspend fun lyricsFor(song: Song): Lyrics? = withContext(Dispatchers.IO) {
-        cache[song.id]?.let { return@withContext it.value }
+        cache[song.id]?.let {
+            Log.d(LYRICS_TAG, "local cache-memoria HIT id=${song.id} -> ${it.value?.let { l -> "synced=${l.synced}" } ?: "sin letra"}")
+            return@withContext it.value
+        }
         val resolved = loadFromLrc(song)
         cache[song.id] = CachedLyrics(resolved)
         resolved
     }
 
     /**
-     * Resuelve la letra en orden: LOCAL (.lrc) → caché LOCAL de letras descargadas → [si `allowNetwork`]
-     * LRCLIB. La caché es dato LOCAL y se muestra SIEMPRE (aunque el ajuste esté apagado o no haya
-     * conexión): mostrar lo ya descargado no implica red. `allowNetwork` (el ajuste) solo controla
-     * peticiones NUEVAS: con `false` jamás se sale a internet, pero lo cacheado sigue apareciendo. La
-     * única forma de olvidar lo cacheado es [clearNetworkCache].
+     * Resuelve la letra priorizando por CALIDAD, no solo por fuente:
+     *  1. Local SINCRONIZADA (.lrc con timestamps) → gana siempre, sin red.
+     *  2. Caché de red SINCRONIZADA → dato local, se muestra con o sin conexión.
+     *  3. Si lo local es PLANO (o no hay) y [allowNetwork] (el opt-in) está ON y aún no se consultó,
+     *     se pide a LRCLIB una versión SINCRONIZADA (una .lrc plana descargada no debe bloquear la
+     *     sincronizada que ofrece internet).
+     *  4. Sin sincronizada por ningún lado: la mejor PLANA (local > caché de red) o vacío.
+     *
+     * Con `allowNetwork=false` jamás se sale a internet; lo cacheado (dato local) sigue apareciendo.
+     * Solo se hace UNA petición por canción (mientras haya algo cacheado de red no se repite).
      */
     suspend fun resolve(song: Song, allowNetwork: Boolean): LyricsResolution = withContext(Dispatchers.IO) {
-        lyricsFor(song)?.let { return@withContext LyricsResolution.Found(it) }
-        // Caché local de descargadas: dato local, se muestra con o sin el ajuste / con o sin red.
-        networkCache.get(song.id)?.let { return@withContext LyricsResolution.Found(it) }
-        // A partir de aquí SÍ es una petición nueva: solo si el ajuste opt-in está encendido.
-        if (!allowNetwork) return@withContext LyricsResolution.NotFound
-        Log.d(LYRICS_TAG, "resolve -> pidiendo a LRCLIB '${song.title}' / '${song.artist}'")
-        when (val r = lrcLibClient.fetch(song.title, song.artist, song.album, song.durationMs / 1000)) {
-            is LrcLibResult.Found -> {
-                networkCache.put(song.id, r.lyrics.syncedLyrics, r.lyrics.plainLyrics)
-                _cacheChanges.value += 1 // nueva letra descargada → Ajustes actualiza el contador
-                val parsed = toLyrics(r.lyrics)
-                val mode = when {
-                    parsed?.synced == true -> "SINCRONIZADO"
-                    parsed != null -> "PLANO"
-                    else -> "ninguno"
+        val local = lyricsFor(song)
+        if (local != null && local.synced) return@withContext LyricsResolution.Found(local)
+
+        val cached = networkCache.get(song.id)
+        if (cached != null && cached.synced) return@withContext LyricsResolution.Found(cached)
+
+        // Pedir a la red SOLO si el opt-in está ON y aún no se consultó (no hay nada cacheado de red).
+        var netPlain: Lyrics? = null
+        if (allowNetwork && cached == null) {
+            Log.d(LYRICS_TAG, "resolve -> LRCLIB '${song.title}' / '${song.artist}' (local=${if (local == null) "ausente" else "plano"})")
+            when (val r = lrcLibClient.fetch(song.title, song.artist, song.album, song.durationMs / 1000)) {
+                is LrcLibResult.Found -> {
+                    networkCache.put(song.id, r.lyrics.syncedLyrics, r.lyrics.plainLyrics)
+                    _cacheChanges.value += 1
+                    val net = toLyrics(r.lyrics)
+                    Log.d(LYRICS_TAG, "DESFASE LRCLIB: audio=${song.durationMs / 1000}s entry=${r.lyrics.durationSec}s (diff=${song.durationMs / 1000 - r.lyrics.durationSec}s)")
+                    logTiming("LRCLIB", song, net)
+                    if (net != null && net.synced) return@withContext LyricsResolution.Found(net)
+                    netPlain = net // la red solo trajo plano: sirve de respaldo abajo
                 }
-                Log.d(LYRICS_TAG, "LRCLIB modo=$mode (respuesta syncedLyrics=${r.lyrics.syncedLyrics != null}, plainLyrics=${r.lyrics.plainLyrics != null})")
-                parsed?.let { LyricsResolution.Found(it) } ?: LyricsResolution.NotFound
+                LrcLibResult.NoConnection -> if (local == null) return@withContext LyricsResolution.NoConnection
+                LrcLibResult.ServiceError -> if (local == null) return@withContext LyricsResolution.ServiceError
+                LrcLibResult.NotFound -> Unit
             }
-            LrcLibResult.NotFound -> LyricsResolution.NotFound
-            LrcLibResult.NoConnection -> LyricsResolution.NoConnection
-            LrcLibResult.ServiceError -> LyricsResolution.ServiceError
+        }
+
+        // Sin sincronizada: la mejor PLANA disponible (local > caché de red > red recién traída) o vacío.
+        when {
+            local != null -> LyricsResolution.Found(local)
+            cached != null -> LyricsResolution.Found(cached)
+            netPlain != null -> LyricsResolution.Found(netPlain)
+            else -> LyricsResolution.NotFound
         }
     }
 
@@ -139,9 +157,14 @@ class LyricsRepository(
     suspend fun lyricsCacheStats(): LyricsCacheStats = withContext(Dispatchers.IO) { networkCache.stats() }
 
     private fun toLyrics(l: LrcLibLyrics): Lyrics? {
-        l.syncedLyrics?.let { s -> LrcParser.parse(s)?.let { return it } }
+        l.syncedLyrics?.let { s ->
+            val parsed = LrcParser.parse(s)
+            Log.d(LYRICS_TAG, "parse(syncedLyrics ${s.length} chars) -> lineas=${parsed?.lines?.size ?: 0} synced=${parsed?.synced}")
+            if (parsed != null) return parsed
+        }
         l.plainLyrics?.let { p ->
             val lines = p.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.map { LyricLine(null, it) }.toList()
+            Log.d(LYRICS_TAG, "sin syncedLyrics utilizable -> PLANO (${lines.size} lineas)")
             if (lines.isNotEmpty()) return Lyrics(lines, synced = false)
         }
         return null
@@ -190,12 +213,29 @@ class LyricsRepository(
 
     private suspend fun loadFromLrc(song: Song): Lyrics? {
         val trees = folderStore.folders.first()
-        if (trees.isEmpty()) return null
+        if (trees.isEmpty()) {
+            Log.d(LYRICS_TAG, "local: sin carpetas SAF concedidas")
+            return null
+        }
         val entry = matchLrc(song, ensureIndex(trees)) ?: return null
         val text = runCatching {
             resolver.openInputStream(entry.uri)?.use { it.readBytes().toString(Charsets.UTF_8) }
-        }.getOrNull() ?: return null
-        return LrcParser.parse(text)
+        }.getOrNull()
+        if (text == null) {
+            Log.d(LYRICS_TAG, "local: no se pudo leer '${entry.base}'")
+            return null
+        }
+        val parsed = LrcParser.parse(text)
+        val head = text.take(160).replace("\n", "\\n").replace("\r", "\\r")
+        Log.d(LYRICS_TAG, "local '${entry.base}' -> lineas=${parsed?.lines?.size ?: 0} synced=${parsed?.synced} head=[$head]")
+        logTiming("local", song, parsed)
+        return parsed
+    }
+
+    /** [DEBUG] Para verificar el desfase: duración del audio y cuándo arranca la 1ª línea vocal. */
+    private fun logTiming(source: String, song: Song, lyrics: Lyrics?) {
+        val firstVocal = lyrics?.lines?.firstOrNull { it.timeMs != null && it.text.isNotBlank() }?.timeMs
+        Log.d(LYRICS_TAG, "TIMING [$source] audio=${song.durationMs / 1000}s primeraVocal=${firstVocal ?: -1}ms synced=${lyrics?.synced}")
     }
 
     // --- Cobertura de carpeta (comparación por ruta relativa, ignorando el volumen) ---

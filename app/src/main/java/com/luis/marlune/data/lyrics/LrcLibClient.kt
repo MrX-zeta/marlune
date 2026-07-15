@@ -8,8 +8,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 import kotlin.math.abs
 
-/** Resultado crudo de LRCLIB: LRC sincronizado y/o texto plano (cualquiera puede faltar). */
-data class LrcLibLyrics(val syncedLyrics: String?, val plainLyrics: String?)
+/** Resultado crudo de LRCLIB: LRC sincronizado y/o texto plano, y la duración de la entrada (s). */
+data class LrcLibLyrics(val syncedLyrics: String?, val plainLyrics: String?, val durationSec: Long = -1)
 
 /**
  * Estado de la búsqueda en red. Diferencia "no encontrada" de fallos, y dentro de los fallos separa
@@ -132,24 +132,34 @@ class LrcLibClient {
 
     private fun parseSearch(body: String, durationSec: Long): LrcLibResult {
         val arr = runCatching { JSONArray(body) }.getOrNull() ?: return LrcLibResult.NotFound
-        var best: LrcLibLyrics? = null
-        var bestScore = Long.MAX_VALUE
+        // Prioriza SIEMPRE las entradas con letra SINCRONIZADA; entre iguales, la duración más cercana.
+        var bestSynced: LrcLibLyrics? = null
+        var bestSyncedScore = Long.MAX_VALUE
+        var bestPlain: LrcLibLyrics? = null
+        var bestPlainScore = Long.MAX_VALUE
         for (i in 0 until arr.length()) {
             val item = arr.optJSONObject(i) ?: continue
             val lyrics = item.toLyrics() ?: continue
             val dur = item.optLong("duration", -1)
             val score = if (dur > 0 && durationSec > 0) abs(dur - durationSec) else Long.MAX_VALUE - 1
-            // Prefiere el más cercano en duración; si no hay duración, cualquiera con letra sirve.
-            if (score < bestScore) { best = lyrics; bestScore = score }
+            if (lyrics.syncedLyrics != null) {
+                if (score < bestSyncedScore) { bestSynced = lyrics; bestSyncedScore = score }
+            } else {
+                if (score < bestPlainScore) { bestPlain = lyrics; bestPlainScore = score }
+            }
         }
-        return best?.let { LrcLibResult.Found(it) } ?: LrcLibResult.NotFound
+        return (bestSynced ?: bestPlain)?.let { LrcLibResult.Found(it) } ?: LrcLibResult.NotFound
     }
 
     private fun JSONObject.toLyrics(): LrcLibLyrics? {
         if (optBoolean("instrumental", false)) return null
         val synced = optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
         val plain = optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" }
-        return if (synced != null || plain != null) LrcLibLyrics(synced, plain) else null
+        return if (synced != null || plain != null) {
+            LrcLibLyrics(synced, plain, optLong("duration", -1))
+        } else {
+            null
+        }
     }
 
     private fun query(vararg params: Pair<String, String>): String =

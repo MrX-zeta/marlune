@@ -14,12 +14,21 @@ import com.luis.marlune.domain.model.Lyrics
  */
 object LrcParser {
 
-    // [mm:ss], [mm:ss.xx] o [mm:ss.xxx] (también admite ':' como separador de fracción).
-    private val TIME = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]""")
+    // [mm:ss], [mm:ss.xx] o [mm:ss.xxx] (fracción con '.' o ':'); tolera espacios dentro del corchete.
+    private val TIME = Regex("""\[\s*(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?\s*]""")
     private val OFFSET = Regex("""\[offset:\s*([+-]?\d+)]""", RegexOption.IGNORE_CASE)
     // Tag de metadatos: corchete que empieza por letras y contiene ':' (p. ej. [ar:Artista]).
     private val META = Regex("""^\[[a-zA-Z]+:.*]$""")
 
+    /**
+     * Tolerante (mismo parser para `.lrc` local y para `syncedLyrics` de LRCLIB):
+     *  - Cero o más espacios entre el timestamp y el texto (`[..]Texto` y `[..] Texto`).
+     *  - Variantes de precisión [mm:ss], [mm:ss.xx], [mm:ss.xxx].
+     *  - Varios timestamps por línea (misma letra en varios momentos).
+     *  - Líneas con timestamp y texto vacío se CONSERVAN como línea vacía, sin abortar el resto.
+     *  - Metadatos ([ar:], [ti:], [al:], [by:]) ignorados; [offset:] aplicado a los tiempos.
+     *  - Con AL MENOS una línea con timestamp → SINCRONIZADA; solo cae a plano si no hay ninguna.
+     */
     fun parse(content: String): Lyrics? {
         if (content.isBlank()) return null
 
@@ -37,13 +46,14 @@ object LrcParser {
             }
 
             val times = TIME.findAll(line).toList()
-            if (times.isNotEmpty()) {
-                val text = line.substring(times.last().range.last + 1).trim()
-                times.forEach { m ->
-                    synced += LyricLine(timeMs = m.toMillis(), text = text)
+            when {
+                times.isNotEmpty() -> {
+                    // Texto = lo que va tras el ÚLTIMO timestamp, recortado (puede quedar vacío).
+                    val text = line.substring(times.last().range.last + 1).trim()
+                    times.forEach { synced += LyricLine(timeMs = it.toMillis(), text = text) }
                 }
-            } else if (!META.matches(line)) {
-                plain += line
+                META.matches(line) -> Unit // metadatos: se ignoran sin romper
+                else -> plain += line
             }
         }
 
