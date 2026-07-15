@@ -39,6 +39,7 @@ import androidx.glance.layout.size
 import androidx.glance.layout.width
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
+import androidx.glance.text.TextAlign
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
 import com.luis.marlune.MarluneApplication
@@ -59,12 +60,17 @@ private fun fixed(color: Color) = ColorProvider(color)
 
 private val TitleStyle = TextStyle(color = ColorProvider(TextPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
 private val ArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSize = 12.sp, fontWeight = FontWeight.Normal)
+// Tipos algo mayores para el tamaño grande (el texto escala con la carátula héroe), centrados.
+private val LargeTitleStyle = TextStyle(color = ColorProvider(TextPrimary), fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+private val LargeArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSize = 13.sp, fontWeight = FontWeight.Normal, textAlign = TextAlign.Center)
 
-/** Altura (real) a partir de la cual se muestra el layout completo (carátula grande + texto + controles). */
+/** Altura (real) desde la que se muestra el layout medio (B) y, más arriba, el grande (C). */
 private val FullThreshold = 110.dp
+private val LargeThreshold = 150.dp
 
 /** Padding horizontal del contenido completo (por lado). También el margen mínimo controles↔borde. */
 private const val FULL_HPAD = 12f
+private const val LARGE_HPAD = 14f
 
 /**
  * Widget de pantalla de inicio de Marlune con Jetpack Glance. Lee el estado del [WidgetPlaybackBus]
@@ -95,10 +101,11 @@ private fun WidgetContent(favorites: FavoritesRepository) {
             val isFavorite = snapshot.mediaId?.toLongOrNull()?.let { it in favoriteIds } == true
             // Acento dinámico de la carátula (extraído por el servicio); marca si es monocroma o no hay.
             val accent = snapshot.accentArgb?.let { Color(it) } ?: Accent
-            if (LocalSize.current.height >= FullThreshold) {
-                FullLayout(snapshot, isFavorite, accent)
-            } else {
-                CompactLayout(snapshot, accent)
+            val h = LocalSize.current.height
+            when {
+                h >= LargeThreshold -> LargeLayout(snapshot, isFavorite, accent)
+                h >= FullThreshold -> FullLayout(snapshot, isFavorite, accent)
+                else -> CompactLayout(snapshot, accent)
             }
         }
     }
@@ -158,6 +165,71 @@ private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Colo
             }
         }
         // Fila de controles repartida con defaultWeight: se adapta al ancho real, sin recortes.
+        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            if (showShuffleFav) {
+                WeightedControl {
+                    ControlButton(
+                        R.drawable.ic_widget_shuffle,
+                        context.getString(R.string.player_shuffle),
+                        if (s.shuffle) Accent else TextTertiary, 48.dp, 22.dp,
+                    ) { actionRunCallback<WidgetShuffleAction>() }
+                }
+            }
+            WeightedControl {
+                ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 24.dp) {
+                    actionRunCallback<WidgetPreviousAction>()
+                }
+            }
+            WeightedControl { PlayPauseButton(s.isPlaying, 56.dp, accent) }
+            WeightedControl {
+                ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
+                    actionRunCallback<WidgetNextAction>()
+                }
+            }
+            if (showShuffleFav) {
+                WeightedControl {
+                    ControlButton(
+                        if (isFavorite) R.drawable.ic_widget_favorite_filled else R.drawable.ic_widget_favorite,
+                        context.getString(if (isFavorite) R.string.player_unlike else R.string.player_like),
+                        if (isFavorite) AccentVivid else TextTertiary, 48.dp, 22.dp,
+                    ) { actionRunCallback<WidgetFavoriteAction>() }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Layout C (grande / casi cuadrado): disposición VERTICAL. Carátula cuadrada CENTRADA arriba (crece con
+ * el alto real), y DEBAJO el título (hasta 2 líneas) y el artista a TODO el ancho del widget —así un
+ * título normal cabe entero y uno largo tiene dos líneas antes de recortar; Glance no puede desplazar
+ * texto, hay que darle ancho—. La fila de controles queda al pie. El bloque superior toma el alto libre
+ * con defaultWeight (los controles nunca se recortan). Texto centrado, para casar con la carátula centrada.
+ */
+@Composable
+private fun LargeLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
+    val context = LocalContext.current
+    val openNowPlaying = GlanceModifier.clickable(actionStartActivity(openAppIntent(context, nowPlaying = true)))
+    val size = LocalSize.current
+    val innerWidthDp = size.width.value - LARGE_HPAD * 2f
+    val showShuffleFav = innerWidthDp >= 260f
+    // Carátula cuadrada: llena el bloque superior (alto − padding − texto − controles) y crece con el
+    // widget, acotada por el ancho. Al ir en un bloque con defaultWeight, si el alto aprieta se recorta
+    // ANTES que los controles (que quedan siempre al pie).
+    val artDim = (size.height.value - 156f).coerceIn(72f, minOf(innerWidthDp, 200f))
+
+    Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = LARGE_HPAD.dp, vertical = 12.dp)) {
+        Column(
+            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Artwork(s.artwork, size = artDim.dp, corner = 14.dp, modifier = openNowPlaying)
+            Spacer(GlanceModifier.height(12.dp))
+            Text(s.title, maxLines = 2, style = LargeTitleStyle, modifier = GlanceModifier.fillMaxWidth().then(openNowPlaying))
+            Spacer(GlanceModifier.height(3.dp))
+            Text(s.artist, maxLines = 1, style = LargeArtistStyle, modifier = GlanceModifier.fillMaxWidth())
+        }
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (showShuffleFav) {
                 WeightedControl {
