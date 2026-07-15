@@ -106,6 +106,7 @@ fun QueueSheet(
         dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxWidth().fillMaxHeight(SheetHeightFraction).navigationBarsPadding(),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
