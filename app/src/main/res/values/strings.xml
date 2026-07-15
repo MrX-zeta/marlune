@@ -51,6 +51,9 @@
     <string name="player_artwork">Carátula del álbum</string>
     <string name="player_empty_title">Aún no hay nada sonando</string>
     <string name="player_empty_hint">Toca una canción para empezar</string>
+    <string name="lyrics_empty">Sin letra disponible</string>
+    <string name="lyrics_pick_folder">Buscar letras en una carpeta…</string>
+    <string name="lyrics_loading">Buscando letra…</string>
 
     <!-- Inicio -->
     <string name="greeting_morning">Buenos días</string>

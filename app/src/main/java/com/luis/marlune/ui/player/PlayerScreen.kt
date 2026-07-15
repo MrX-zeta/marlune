@@ -42,7 +42,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.util.lerp
+import android.net.Uri
 import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -56,6 +59,7 @@ import com.luis.marlune.playback.TrackChange
 import com.luis.marlune.ui.components.Marea
 import com.luis.marlune.ui.player.components.AlbumArt
 import com.luis.marlune.ui.player.components.LikeButton
+import com.luis.marlune.ui.player.components.LyricsView
 import com.luis.marlune.ui.player.components.PlayerControls
 import com.luis.marlune.ui.player.components.runTrackSlideAnimation
 import com.luis.marlune.ui.theme.LocalReducedMotion
@@ -74,8 +78,10 @@ import kotlinx.coroutines.launch
 @Composable
 fun PlayerScreen(
     uiState: PlayerUiState,
+    lyricsState: LyricsUiState,
     onEvent: (PlayerEvent) -> Unit,
     onMinimize: () -> Unit,
+    onLyricsFolderPicked: (Uri) -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
     titleModifier: Modifier = Modifier,
@@ -92,6 +98,13 @@ fun PlayerScreen(
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
     val context = LocalContext.current
+
+    // Carátula ↔ letras: un tap sobre la carátula alterna (lo resuelve el detector de AlbumArt).
+    var showLyrics by remember { mutableStateOf(false) }
+    // Pick de carpeta SAF para leer .lrc (permiso por árbol, persistente). Solo desde el vacío.
+    val folderLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree(),
+    ) { uri -> if (uri != null) onLyricsFolderPicked(uri) }
 
     // Carátula real: se carga perezosamente con Coil desde el content URI (caché memoria+disco).
     // El acento dinámico NO se extrae aquí: lo hace un efecto compartido en MarluneApp al cambiar la
@@ -190,11 +203,16 @@ fun PlayerScreen(
                 .systemBarsPadding()
                 .padding(horizontal = 24.dp),
         ) {
-            PlayerTopBar(source = uiState.source, onMinimize = onMinimize, modifier = chrome)
+            // Al minimizar se vuelve a la carátula (el elemento compartido que viaja es la carátula).
+            PlayerTopBar(
+                source = uiState.source,
+                onMinimize = { showLyrics = false; onMinimize() },
+                modifier = chrome,
+            )
 
             Spacer(Modifier.weight(0.5f))
 
-            // Carátula héroe: elemento compartido, nítido, sin efecto de colapso.
+            // Carátula héroe (o letras al tocarla): elemento compartido, nítido, sin colapso.
             AlbumArt(
                 artwork = artwork,
                 trackOffset = trackOffset,
@@ -204,6 +222,16 @@ fun PlayerScreen(
                 onNext = { onEvent(PlayerEvent.Next) },
                 onCollapseDrag = onCollapseDrag,
                 onCollapseRelease = onCollapseRelease,
+                showLyrics = showLyrics,
+                onToggleLyrics = { showLyrics = !showLyrics },
+                lyricsContent = {
+                    LyricsView(
+                        state = lyricsState,
+                        reducedMotion = reducedMotion,
+                        onPickFolder = { folderLauncher.launch(null) },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                },
                 modifier = Modifier.fillMaxWidth().then(artModifier),
             )
 
@@ -421,8 +449,10 @@ private fun PlayerScreenPlayingPreview() {
     MarluneTheme {
         PlayerScreen(
             uiState = PlayerUiState.Preview.copy(isPlaying = true, isShuffleOn = true, isLiked = true),
+            lyricsState = LyricsUiState.None(canPickFolder = true),
             onEvent = {},
             onMinimize = {},
+            onLyricsFolderPicked = {},
         )
     }
 }
@@ -433,8 +463,10 @@ private fun PlayerScreenPausedPreview() {
     MarluneTheme {
         PlayerScreen(
             uiState = PlayerUiState.Preview.copy(isPlaying = false, repeatMode = RepeatMode.ONE),
+            lyricsState = LyricsUiState.None(canPickFolder = false),
             onEvent = {},
             onMinimize = {},
+            onLyricsFolderPicked = {},
         )
     }
 }

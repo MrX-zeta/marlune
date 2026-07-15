@@ -1,10 +1,12 @@
 package com.luis.marlune.ui.player.components
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -41,21 +43,19 @@ import kotlin.math.abs
 private val ArtCorner = 24.dp
 private const val HorizontalCommitFraction = 0.22f // ~22 % del ancho para confirmar cambio de pista
 private const val HorizontalFlingVelocity = 1000f
+private const val LyricsCrossfadeMillis = 240
 
 private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
 
 /**
- * Carátula cuadrada con gestos de EJE RESTRINGIDO (se bloquea la dirección dominante al
- * superar el touch slop, sin movimiento libre en 2D):
- *  - Horizontal → cambia de pista: izquierda = siguiente, derecha = anterior (convención estándar
- *    tipo Spotify). La carátula sigue el dedo vía [trackOffset] (hoisteado para que el título de
- *    Now Playing acompañe el mismo desplazamiento) y, al superar el umbral de distancia o
- *    velocidad, sale acelerando y la nueva entra desde el lado opuesto (cross-slide).
- *  - Vertical hacia abajo → minimizar: NO mueve la carátula por libre; reporta el avance a la
- *    pantalla ([onCollapseDrag]/[onCollapseRelease]), que acopla fade/escala/blur a toda la vista
- *    y decide el snap. Es la mitad de colapso de la expansión mini↔full.
+ * Carátula cuadrada con DETECTOR UNIFICADO de eje restringido (sin movimiento libre en 2D):
+ *  - Tap (sin superar el slop) → alterna carátula ↔ letras ([onToggleLyrics]).
+ *  - Horizontal → cambia de pista: izquierda = siguiente, derecha = anterior (convención estándar).
+ *  - Vertical hacia abajo → minimizar, PERO solo en modo carátula; en modo letras el eje vertical se
+ *    cede a la lista de letras (scroll). Es la mitad de colapso de la expansión mini↔full.
  *
- * Con movimiento reducido, el cierre de gestos horizontales se resuelve al instante.
+ * En modo letras se muestra [lyricsContent] con un crossfade (≤300 ms; salto con movimiento reducido).
+ * El swipe de cambiar pista y el gesto de minimizar siguen funcionando igual que antes.
  */
 @Composable
 fun AlbumArt(
@@ -67,6 +67,9 @@ fun AlbumArt(
     onNext: () -> Unit,
     onCollapseDrag: (dyPx: Float) -> Unit,
     onCollapseRelease: (velocityYPx: Float) -> Unit,
+    showLyrics: Boolean,
+    onToggleLyrics: () -> Unit,
+    lyricsContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = LocalReducedMotion.current
@@ -74,10 +77,10 @@ fun AlbumArt(
     val density = LocalDensity.current
     val offsetX = trackOffset
     // El pointerInput no se re-crea al cambiar estos flags (su key es reducedMotion/widthPx), así que
-    // los capturaría congelados. rememberUpdatedState da el valor ACTUAL dentro del gesto (mismo bug
-    // de raíz que el mini con el Mix: la cola arranca en índice 0 → canGoPrevious=false).
+    // los capturaría congelados. rememberUpdatedState da el valor ACTUAL dentro del gesto.
     val latestCanGoNext = rememberUpdatedState(canGoNext)
     val latestCanGoPrevious = rememberUpdatedState(canGoPrevious)
+    val latestShowLyrics = rememberUpdatedState(showLyrics)
 
     BoxWithConstraints(modifier = modifier.aspectRatio(1f)) {
         val widthPx = with(density) { maxWidth.toPx() }
@@ -89,13 +92,12 @@ fun AlbumArt(
             spring<Float>(dampingRatio = 0.7f, stiffness = Spring.StiffnessLow)
         }
 
-        ArtSurface(
-            artwork = artwork,
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                // El detector va ANTES del graphicsLayer que traslada la carátula: así el gesto se
-                // mide en coordenadas ESTABLES y el arrastre no se retroalimenta con la traslación
-                // (evita amortiguación/dirección poco fiable). El graphicsLayer, debajo, solo pinta.
+                // Detector ANTES del graphicsLayer que traslada el contenido: el gesto se mide en
+                // coordenadas ESTABLES. Va en un Box PADRE del contenido: la lista de letras (hijo)
+                // consume el scroll vertical y el tap/horizontal burbujean aquí.
                 .pointerInput(reducedMotion, widthPx) {
                     val touchSlop = viewConfiguration.touchSlop
                     awaitEachGesture {
@@ -103,26 +105,25 @@ fun AlbumArt(
                         val velocityTracker = VelocityTracker()
                         velocityTracker.addPosition(down.uptimeMillis, down.position)
                         var axis = DragAxis.Undecided
-                        // Desplazamiento horizontal ACUMULADO desde el inicio de ESTE gesto (parte
-                        // de 0, independiente de dónde empezó el dedo y de residuos previos). Decide
-                        // la dirección por su signo; nunca por la posición absoluta.
+                        var consumedByChild = false // p. ej. el enlace "buscar carpeta" del vacío
                         var dragX = 0f
 
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             velocityTracker.addPosition(change.uptimeMillis, change.position)
+                            if (axis == DragAxis.Undecided && change.isConsumed) consumedByChild = true
                             if (!change.pressed) break
 
-                            // Bloqueo de eje: dirección dominante al superar el slop.
                             if (axis == DragAxis.Undecided) {
                                 val totalDx = change.position.x - down.position.x
                                 val totalDy = change.position.y - down.position.y
                                 if (abs(totalDx) >= touchSlop || abs(totalDy) >= touchSlop) {
                                     axis = when {
                                         abs(totalDx) > abs(totalDy) -> DragAxis.Horizontal
-                                        totalDy > 0f -> DragAxis.VerticalDown
-                                        else -> DragAxis.Ignored // hacia arriba: sin acción
+                                        // Minimizar solo en modo carátula; en letras el vertical scrollea.
+                                        !latestShowLyrics.value && totalDy > 0f -> DragAxis.VerticalDown
+                                        else -> DragAxis.Ignored
                                     }
                                 }
                             }
@@ -132,7 +133,7 @@ fun AlbumArt(
                                 DragAxis.Horizontal -> {
                                     change.consume()
                                     dragX += delta.x
-                                    val target = dragX // la carátula sigue el acumulado (misma dirección)
+                                    val target = dragX
                                     scope.launch { offsetX.snapTo(target) }
                                 }
 
@@ -141,6 +142,8 @@ fun AlbumArt(
                                     onCollapseDrag(delta.y)
                                 }
 
+                                // Undecided / Ignored: NO se consume → la lista de letras (hijo) puede
+                                // scrollear en vertical y el tap se resuelve al soltar.
                                 else -> {}
                             }
                         }
@@ -148,42 +151,51 @@ fun AlbumArt(
                         val velocity = velocityTracker.calculateVelocity()
                         when (axis) {
                             DragAxis.Horizontal -> {
-                                // El swipe solo elige QUÉ comando pedir (siguiente/anterior) según
-                                // el offset neto + fling. La dirección de la animación de
-                                // confirmación NO se decide aquí: la corre el observador de
-                                // `trackTransition` (fuente única), derivándola del cambio de pista.
                                 when (
                                     resolveTrackSwipe(dragX, velocity.x, horizontalThreshold, HorizontalFlingVelocity)
                                 ) {
-                                    // Valores ACTUALES (no los capturados al crear el gesto).
                                     TrackSwipeDirection.NEXT -> if (latestCanGoNext.value) onNext()
                                     TrackSwipeDirection.PREVIOUS -> if (latestCanGoPrevious.value) onPrevious()
                                     null -> {}
                                 }
-                                // Red de seguridad: SIEMPRE se asienta a 0 al soltar. Si el cambio de
-                                // pista ocurre, su `runTrackSlideAnimation` toma este MISMO Animatable
-                                // y hace el cross-slide (cancela este settle por el mutatorMutex). Si
-                                // NO llega transición (extremo, hasNext/hasPrevious obsoleto o carga
-                                // DIRECT), esto evita que la carátula quede CORTADA a medias.
                                 scope.launch { offsetX.animateTo(0f, settleSpring()) }
                             }
 
                             DragAxis.VerticalDown -> onCollapseRelease(velocity.y)
 
+                            // Tap real (nunca superó el slop) y ningún hijo lo tomó → alterna letras.
+                            DragAxis.Undecided -> if (!consumedByChild) onToggleLyrics()
+
                             else -> {}
                         }
                     }
-                }
-                .graphicsLayer {
-                    // Solo visual: la carátula sigue el dedo en horizontal (cambio de pista); va
-                    // debajo del detector, así no altera las coordenadas del gesto.
-                    translationX = offsetX.value
-                    val dragFraction = (abs(offsetX.value) / widthPx).coerceIn(0f, 1f)
-                    val shrink = 1f - dragFraction * 0.06f
-                    scaleX = shrink
-                    scaleY = shrink
                 },
-        )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        // Solo visual: el contenido (carátula o letras) sigue el dedo en horizontal.
+                        translationX = offsetX.value
+                        val dragFraction = (abs(offsetX.value) / widthPx).coerceIn(0f, 1f)
+                        val shrink = 1f - dragFraction * 0.06f
+                        scaleX = shrink
+                        scaleY = shrink
+                    },
+            ) {
+                Crossfade(
+                    targetState = showLyrics,
+                    animationSpec = if (reducedMotion) snap() else tween(LyricsCrossfadeMillis),
+                    label = "artLyricsCrossfade",
+                ) { lyrics ->
+                    if (lyrics) {
+                        Box(Modifier.fillMaxSize()) { lyricsContent() }
+                    } else {
+                        ArtSurface(artwork = artwork, modifier = Modifier.fillMaxSize())
+                    }
+                }
+            }
+        }
     }
 }
 

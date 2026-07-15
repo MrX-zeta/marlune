@@ -47,6 +47,8 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.luis.marlune.di.rememberFavoritesRepository
+import com.luis.marlune.di.rememberLyricsRepository
+import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.ui.detail.AlbumDetailRoute
 import com.luis.marlune.ui.detail.AlbumsRoute
@@ -112,8 +114,16 @@ fun MarluneApp(modifier: Modifier = Modifier) {
 
     val reducedMotion = LocalReducedMotion.current
     val playerViewModel: PlayerViewModel =
-        viewModel(factory = PlayerViewModel.factory(playback, rememberFavoritesRepository()))
+        viewModel(
+            factory = PlayerViewModel.factory(
+                playback,
+                rememberFavoritesRepository(),
+                rememberMusicRepository(),
+                rememberLyricsRepository(),
+            ),
+        )
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
+    val lyricsState by playerViewModel.lyricsState.collectAsStateWithLifecycle()
 
     // Acento dinámico COMPARTIDO: se extrae (Palette, fuera del hilo principal) al cambiar la pista
     // ACTUAL —aquí, siempre compuesto—, no dentro de Now Playing. Así el color se refresca en tiempo
@@ -198,8 +208,10 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                 BackHandler(enabled = playerExpanded) { playerExpanded = false }
                 PlayerScreen(
                     uiState = playerState,
+                    lyricsState = lyricsState,
                     onEvent = dispatchPlayer,
                     onMinimize = { playerExpanded = false },
+                    onLyricsFolderPicked = playerViewModel::onLyricsFolderPicked,
                     artModifier = artModifier,
                     titleModifier = titleModifier,
                     artistModifier = artistModifier,
