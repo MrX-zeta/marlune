@@ -3,6 +3,7 @@ package com.luis.marlune.di
 import android.content.Context
 import androidx.room.Room
 import com.luis.marlune.data.database.MarluneDatabase
+import com.luis.marlune.data.datastore.AppPrefsStore
 import com.luis.marlune.data.datastore.LibrarySortStore
 import com.luis.marlune.data.datastore.LyricsFolderStore
 import com.luis.marlune.data.datastore.SessionStore
@@ -70,6 +71,9 @@ class AppContainer(context: Context) {
     val savedSessionRepository: SavedSessionRepository = SavedSessionRepository(sessionStore, musicRepository)
 
     private val lyricsFolderStore = LyricsFolderStore(context.applicationContext)
+
+    /** Flags de primera experiencia (onboarding completado, permiso de notificaciones ya pedido). */
+    val appPrefsStore = AppPrefsStore(context.applicationContext)
 
     /** Preferencias de Biblioteca (orden de Canciones), persistidas entre sesiones. */
     val librarySortStore = LibrarySortStore(context.applicationContext)

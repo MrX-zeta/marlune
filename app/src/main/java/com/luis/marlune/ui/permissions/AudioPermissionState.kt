@@ -4,7 +4,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,7 +38,6 @@ fun rememberAudioPermissionState(): AudioPermissionUiState {
             if (isAudioPermissionGranted(context)) AudioPermissionStatus.Granted else AudioPermissionStatus.Denied,
         )
     }
-    var requestedOnce by rememberSaveable { mutableStateOf(false) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         status = when {
@@ -51,15 +49,9 @@ fun rememberAudioPermissionState(): AudioPermissionUiState {
         }
     }
 
+    // El permiso se pide de forma EXPLÍCITA (botón "Conceder acceso" en el onboarding o en la pantalla
+    // de explicación), nunca con un diálogo automático al abrir la app.
     val requestPermission: () -> Unit = { launcher.launch(requiredAudioPermission) }
-
-    // Solicita una vez al entrar si aún no está concedido.
-    LaunchedEffect(Unit) {
-        if (!requestedOnce && !isAudioPermissionGranted(context)) {
-            requestedOnce = true
-            requestPermission()
-        }
-    }
 
     // Reevalúa al volver a primer plano (tras conceder en Ajustes) sin volver a lanzar el diálogo.
     LifecycleStartEffect(Unit) {
