@@ -1,6 +1,7 @@
 package com.luis.marlune.ui.player
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -394,15 +395,23 @@ private fun TrackInfo(
     likeModifier: Modifier = Modifier,
     modifier: Modifier = Modifier,
 ) {
+    val reducedMotion = LocalReducedMotion.current
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            // Título largo: se desplaza (marquee) en vez de truncarse; basicMarquee solo anima si el
+            // texto desborda. El marquee va DESPUÉS del sharedBounds para medir dentro de los bounds ya
+            // morfados; su retardo inicial (~1.2 s) supera la transición mini↔full, así no la enturbia.
+            // Con movimiento reducido: elipsis estática (sin marquee). El mini-player conserva su elipsis.
             Text(
                 text = title,
                 style = MarluneTheme.typography.titleLarge,
                 color = MarluneTheme.colors.textPrimary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f).then(titleModifier),
+                overflow = if (reducedMotion) TextOverflow.Ellipsis else TextOverflow.Clip,
+                modifier = Modifier
+                    .weight(1f)
+                    .then(titleModifier)
+                    .then(if (reducedMotion) Modifier else Modifier.basicMarquee()),
             )
             // "Me gusta" vive en la fila del título, no sobre la carátula; es chrome (se desvanece).
             LikeButton(isLiked = isLiked, onClick = onToggleLike, modifier = likeModifier)
