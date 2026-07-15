@@ -79,6 +79,7 @@ import kotlinx.coroutines.launch
 fun PlayerScreen(
     uiState: PlayerUiState,
     lyricsState: LyricsUiState,
+    folderError: Boolean,
     onEvent: (PlayerEvent) -> Unit,
     onMinimize: () -> Unit,
     onLyricsFolderPicked: (Uri) -> Unit,
@@ -228,7 +229,8 @@ fun PlayerScreen(
                     LyricsView(
                         state = lyricsState,
                         reducedMotion = reducedMotion,
-                        onPickFolder = { folderLauncher.launch(null) },
+                        folderError = folderError,
+                        onGrantAccess = { initialUri -> folderLauncher.launch(initialUri) },
                         modifier = Modifier.fillMaxSize(),
                     )
                 },
@@ -449,7 +451,8 @@ private fun PlayerScreenPlayingPreview() {
     MarluneTheme {
         PlayerScreen(
             uiState = PlayerUiState.Preview.copy(isPlaying = true, isShuffleOn = true, isLiked = true),
-            lyricsState = LyricsUiState.None(canPickFolder = true),
+            lyricsState = LyricsUiState.None(request = null),
+            folderError = false,
             onEvent = {},
             onMinimize = {},
             onLyricsFolderPicked = {},
@@ -463,7 +466,8 @@ private fun PlayerScreenPausedPreview() {
     MarluneTheme {
         PlayerScreen(
             uiState = PlayerUiState.Preview.copy(isPlaying = false, repeatMode = RepeatMode.ONE),
-            lyricsState = LyricsUiState.None(canPickFolder = false),
+            lyricsState = LyricsUiState.None(request = null),
+            folderError = false,
             onEvent = {},
             onMinimize = {},
             onLyricsFolderPicked = {},

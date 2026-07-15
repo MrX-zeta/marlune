@@ -124,6 +124,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
         )
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
     val lyricsState by playerViewModel.lyricsState.collectAsStateWithLifecycle()
+    val lyricsFolderError by playerViewModel.folderError.collectAsStateWithLifecycle()
 
     // Acento dinámico COMPARTIDO: se extrae (Palette, fuera del hilo principal) al cambiar la pista
     // ACTUAL —aquí, siempre compuesto—, no dentro de Now Playing. Así el color se refresca en tiempo
@@ -209,6 +210,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                 PlayerScreen(
                     uiState = playerState,
                     lyricsState = lyricsState,
+                    folderError = lyricsFolderError,
                     onEvent = dispatchPlayer,
                     onMinimize = { playerExpanded = false },
                     onLyricsFolderPicked = playerViewModel::onLyricsFolderPicked,

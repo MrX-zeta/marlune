@@ -1,5 +1,6 @@
 package com.luis.marlune.ui.player.components
 
+import android.net.Uri
 import android.os.SystemClock
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.LyricLine
+import com.luis.marlune.domain.model.LyricsFolderRequest
 import com.luis.marlune.ui.player.LyricsUiState
 import com.luis.marlune.ui.theme.MarluneTheme
 import androidx.compose.ui.res.stringResource
@@ -62,7 +64,8 @@ private const val ManualScrollPauseMs = 4_000L
 fun LyricsView(
     state: LyricsUiState,
     reducedMotion: Boolean,
-    onPickFolder: () -> Unit,
+    folderError: Boolean,
+    onGrantAccess: (initialUri: Uri?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val surface = MarluneTheme.colors.surfaceElevated
@@ -73,7 +76,7 @@ fun LyricsView(
     ) {
         when (state) {
             LyricsUiState.Loading -> CenteredNote(stringResource(R.string.lyrics_loading))
-            is LyricsUiState.None -> EmptyLyrics(canPickFolder = state.canPickFolder, onPickFolder = onPickFolder)
+            is LyricsUiState.None -> EmptyLyrics(state.request, folderError, onGrantAccess)
             is LyricsUiState.Plain -> PlainLyrics(state.lines)
             is LyricsUiState.Synced -> SyncedLyrics(state.lines, state.activeIndex, reducedMotion)
         }
@@ -176,7 +179,11 @@ private fun CenteredNote(text: String) {
 }
 
 @Composable
-private fun EmptyLyrics(canPickFolder: Boolean, onPickFolder: () -> Unit) {
+private fun EmptyLyrics(
+    request: LyricsFolderRequest?,
+    folderError: Boolean,
+    onGrantAccess: (Uri?) -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -184,36 +191,54 @@ private fun EmptyLyrics(canPickFolder: Boolean, onPickFolder: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
+        if (request == null) {
+            // Ya hay acceso (o no se dedujo la carpeta): simplemente no existe el .lrc.
+            Text(
+                text = stringResource(R.string.lyrics_empty),
+                style = MarluneTheme.typography.bodyMedium,
+                color = MarluneTheme.colors.textTertiary,
+                textAlign = TextAlign.Center,
+            )
+            return@Column
+        }
+
+        // Falta acceso a la carpeta de ESTA canción: lenguaje humano + nombre visible + botón.
         Text(
-            text = stringResource(R.string.lyrics_empty),
+            text = stringResource(R.string.lyrics_need_access, request.folderName),
             style = MarluneTheme.typography.bodyMedium,
-            color = MarluneTheme.colors.textTertiary,
+            color = MarluneTheme.colors.textSecondary,
             textAlign = TextAlign.Center,
         )
-        if (canPickFolder) {
-            Spacer(Modifier.height(18.dp))
-            // Botón claro (pastilla con icono + tinte de acento): obvio que es tocable.
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(MarluneTheme.colors.accent.copy(alpha = 0.14f))
-                    .clickable { onPickFolder() }
-                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.FolderOpen,
-                    contentDescription = null,
-                    tint = MarluneTheme.colors.accent,
-                    modifier = Modifier.size(18.dp),
-                )
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = stringResource(R.string.lyrics_pick_folder),
-                    style = MarluneTheme.typography.labelLarge,
-                    color = MarluneTheme.colors.accent,
-                )
-            }
+        if (folderError) {
+            Spacer(Modifier.height(10.dp))
+            Text(
+                text = stringResource(R.string.lyrics_wrong_folder),
+                style = MarluneTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center,
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+        Row(
+            modifier = Modifier
+                .clip(RoundedCornerShape(50))
+                .background(MarluneTheme.colors.accent.copy(alpha = 0.14f))
+                .clickable { onGrantAccess(request.initialUri) }
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.FolderOpen,
+                contentDescription = null,
+                tint = MarluneTheme.colors.accent,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = stringResource(R.string.lyrics_grant),
+                style = MarluneTheme.typography.labelLarge,
+                color = MarluneTheme.colors.accent,
+            )
         }
     }
 }

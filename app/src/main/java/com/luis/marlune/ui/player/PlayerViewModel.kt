@@ -5,19 +5,23 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.luis.marlune.data.repository.AddFolderResult
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.LyricsRepository
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.domain.model.LyricLine
 import com.luis.marlune.domain.model.Lyrics
+import com.luis.marlune.domain.model.LyricsFolderRequest
 import com.luis.marlune.domain.model.Song
 import com.luis.marlune.playback.PlaybackRepository
 import com.luis.marlune.playback.PlaybackState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -51,34 +55,48 @@ class PlayerViewModel(
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerUiState.Empty)
 
     // --- Letras (100% local) ---
-    private data class LyricsLoad(val loading: Boolean, val lyrics: Lyrics?)
+    private data class LyricsLoad(val loading: Boolean, val lyrics: Lyrics?, val request: LyricsFolderRequest?)
 
-    // Resuelve la letra al cambiar de pista O al conceder carpeta; emite "cargando" mientras va a IO.
+    // Resuelve la letra al cambiar de pista O al cambiar las carpetas concedidas; emite "cargando"
+    // mientras va a IO, y si no hay letra deduce si falta conceder la carpeta de ESA canción.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val loadedLyrics: Flow<LyricsLoad> =
         combine(
             playback.state.map { it.mediaId }.distinctUntilChanged(),
-            lyrics.hasFolder.distinctUntilChanged(),
-        ) { mediaId, hasFolder -> mediaId to hasFolder }
+            lyrics.grantedFolders.distinctUntilChanged(),
+        ) { mediaId, folders -> mediaId to folders }
             .distinctUntilChanged()
             .transformLatest { (mediaId, _) ->
-                emit(LyricsLoad(loading = true, lyrics = null))
+                emit(LyricsLoad(loading = true, lyrics = null, request = null))
                 val song = songFor(mediaId)
-                emit(LyricsLoad(loading = false, lyrics = song?.let { lyrics.lyricsFor(it) }))
+                val lrc = song?.let { lyrics.lyricsFor(it) }
+                val request = if (lrc == null && song != null) lyrics.folderRequestFor(song) else null
+                emit(LyricsLoad(loading = false, lyrics = lrc, request = request))
             }
 
     /** Estado de la vista de letras: la línea activa (sincronizada) sigue la posición del player. */
     val lyricsState: StateFlow<LyricsUiState> =
-        combine(loadedLyrics, playback.state, lyrics.hasFolder) { load, state, hasFolder ->
+        combine(loadedLyrics, playback.state) { load, state ->
             val lrc = load.lyrics
             when {
                 load.loading -> LyricsUiState.Loading
-                lrc == null -> LyricsUiState.None(canPickFolder = !hasFolder)
+                lrc == null -> LyricsUiState.None(request = load.request)
                 lrc.synced -> LyricsUiState.Synced(lrc.lines, activeIndex(lrc.lines, state.positionMs))
                 else -> LyricsUiState.Plain(lrc.lines.map { it.text })
             }
         }.distinctUntilChanged()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LyricsUiState.Loading)
+
+    // Error transitorio: el usuario eligió una carpeta que no contiene la canción actual. Se olvida
+    // al cambiar de pista.
+    private val _folderError = MutableStateFlow(false)
+    val folderError: StateFlow<Boolean> = _folderError.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            playback.state.map { it.mediaId }.distinctUntilChanged().collect { _folderError.value = false }
+        }
+    }
 
     fun onEvent(event: PlayerEvent) {
         when (event) {
@@ -97,9 +115,16 @@ class PlayerViewModel(
         viewModelScope.launch { favorites.toggle(id) }
     }
 
-    /** Persiste la carpeta SAF elegida por el usuario (para leer `.lrc`) y re-resuelve la letra. */
+    /**
+     * Concede la carpeta SAF elegida en el contexto de la canción actual. Si esa carpeta NO contiene
+     * la canción, marca el error (la UI ofrece reintentar) y NO la persiste. Si la contiene, se guarda
+     * (multi-carpeta) y la letra se re-resuelve al cambiar el conjunto de carpetas.
+     */
     fun onLyricsFolderPicked(uri: Uri) {
-        viewModelScope.launch { lyrics.setFolder(uri) }
+        viewModelScope.launch {
+            val song = songFor(playback.state.value.mediaId)
+            _folderError.value = lyrics.addFolderForSong(uri, song) == AddFolderResult.WRONG_FOLDER
+        }
     }
 
     private fun songFor(mediaId: String?): Song? =

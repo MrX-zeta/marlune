@@ -52,8 +52,10 @@
     <string name="player_empty_title">Aún no hay nada sonando</string>
     <string name="player_empty_hint">Toca una canción para empezar</string>
     <string name="lyrics_empty">Sin letra disponible</string>
-    <string name="lyrics_pick_folder">Buscar letras en una carpeta…</string>
     <string name="lyrics_loading">Buscando letra…</string>
+    <string name="lyrics_need_access">Marlune necesita acceso a la carpeta «%1$s» para leer sus letras</string>
+    <string name="lyrics_grant">Conceder acceso</string>
+    <string name="lyrics_wrong_folder">Esa carpeta no contiene esta canción. Inténtalo de nuevo.</string>
 
     <!-- Inicio -->
     <string name="greeting_morning">Buenos días</string>
