@@ -163,8 +163,18 @@ fun LibraryScreen(
     // UNA sola LazyColumn persistente: su estado se hoistea aquí y NO se recrea al cambiar de chip.
     // Cambiar de filtro solo cambia el DATA; Compose recicla los slots (keys + contentType).
     val listState = rememberLazyListState()
-    // Al cambiar de categoría se vuelve arriba (evita arrastrar el offset de una lista a otra). O(1).
-    LaunchedEffect(selectedFilter) { listState.scrollToItem(0) }
+    // Al CAMBIAR de categoría se vuelve arriba (evita arrastrar el offset de una lista a otra). El
+    // último filtro para el que ya se subió se recuerda con rememberSaveable, así SOBREVIVE a la
+    // restauración del estado: al volver de Now Playing con el mismo chip, el filtro coincide y NO se
+    // resetea la posición restaurada (antes el LaunchedEffect se relanzaba en la recomposición nueva y
+    // borraba el scroll). Solo sube a 0 cuando el chip cambia de verdad. O(1).
+    var lastScrolledFilter by rememberSaveable { mutableStateOf(selectedFilter) }
+    LaunchedEffect(selectedFilter) {
+        if (selectedFilter != lastScrolledFilter) {
+            listState.scrollToItem(0)
+            lastScrolledFilter = selectedFilter
+        }
+    }
 
     // Padding inferior dinámico: el alto real del mini-player (cuando hay pista) + la barra vía el
     // inset del Scaffold, + un respiro para que la última canción no quede pegada al borde/mini-player.
