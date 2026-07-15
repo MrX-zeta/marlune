@@ -33,8 +33,9 @@ import com.luis.marlune.R
 import com.luis.marlune.ui.components.ContextMenuItem
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.StaggeredReveal
-import com.luis.marlune.ui.library.components.CircleCover
 import com.luis.marlune.ui.library.components.LibraryRow
+import com.luis.marlune.ui.library.components.PlaylistMosaicCover
+import com.luis.marlune.ui.library.components.RoundedCover
 import com.luis.marlune.ui.theme.MarluneTheme
 
 private const val StaggerVisibleCount = 10
@@ -81,12 +82,19 @@ fun PlaylistsPane(
                     LibraryRow(
                         entry = entry,
                         coverIcon = Icons.AutoMirrored.Rounded.QueueMusic,
-                        coverShape = CircleCover,
+                        coverShape = RoundedCover,
                         onClick = { onOpen(entry.id) },
                         menuItems = listOf(
                             ContextMenuItem(R.string.menu_playlist_rename) { renameTarget = entry },
                             ContextMenuItem(R.string.menu_playlist_delete) { deleteTarget = entry },
                         ),
+                        coverContent = {
+                            PlaylistMosaicCover(
+                                covers = entry.playlistCovers,
+                                modifier = Modifier.size(52.dp),
+                                fallbackKey = entry.id,
+                            )
+                        },
                     )
                 }
             }

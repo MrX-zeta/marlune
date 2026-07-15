@@ -59,6 +59,8 @@ fun LibraryRow(
     modifier: Modifier = Modifier,
     isCurrent: Boolean = false,
     isPlaying: Boolean = false,
+    // Portada alternativa (p. ej. el mosaico de una lista). Si es nula, se usa la portada estándar.
+    coverContent: (@Composable () -> Unit)? = null,
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val accent = remember(entry.id) { placeholderAccentFor(entry.id) }
@@ -83,12 +85,16 @@ fun LibraryRow(
             .padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        LibraryCover(
-            accent = accent,
-            icon = coverIcon,
-            shape = coverShape,
-            artworkUri = entry.artworkUri,
-        )
+        if (coverContent != null) {
+            coverContent()
+        } else {
+            LibraryCover(
+                accent = accent,
+                icon = coverIcon,
+                shape = coverShape,
+                artworkUri = entry.artworkUri,
+            )
+        }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(

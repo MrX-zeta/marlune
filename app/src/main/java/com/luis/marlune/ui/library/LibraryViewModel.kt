@@ -224,6 +224,7 @@ class LibraryViewModel(
         title = name,
         subtitle = "$songCount ${if (songCount == 1) "canción" else "canciones"}",
         artworkUri = null,
+        playlistCovers = covers,
     )
 
     companion object {

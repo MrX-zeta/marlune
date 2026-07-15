@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Immutable
 import com.luis.marlune.R
+import com.luis.marlune.domain.model.PlaylistCover
 
 /** Categorías del filtro de Biblioteca. El orden es el orden visual de los chips. */
 enum class LibraryFilter(@param:StringRes val labelRes: Int) {
@@ -24,6 +25,8 @@ data class LibraryEntry(
     val title: String,
     val subtitle: String,
     val artworkUri: Uri? = null,
+    /** Solo para listas: carátulas (hasta 4) de sus primeras canciones, para el mosaico de portada. */
+    val playlistCovers: List<PlaylistCover> = emptyList(),
 )
 
 /**
