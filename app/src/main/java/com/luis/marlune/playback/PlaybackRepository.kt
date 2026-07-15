@@ -105,6 +105,10 @@ class PlaybackRepository(context: Context) {
     private var transitionId = 0
     private var transitionKind = TrackChange.DIRECT
     private var lastTransitionIndex = 0
+    // Dirección PEDIDA por un skip explícito (next/previous, sea botón o swipe): la conocemos con
+    // certeza, así no la inferimos por índice (la inferencia se invierte en colas de 2 elementos, donde
+    // el wrap idx1→idx0 se confunde con "siguiente"). `null` para saltos por índice (cola) → se infiere.
+    private var pendingSeekDirection: TrackChange? = null
 
     private val listener = object : Player.Listener {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
@@ -114,11 +118,15 @@ class PlaybackRepository(context: Context) {
                 // Cola armada/reemplazada por una selección directa: sin slide (crossfade/aparición).
                 Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> TrackChange.DIRECT
                 Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> TrackChange.NEXT // auto-avance al terminar
-                Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> // skip/prev/swipe: dirección por índice
-                    if (forwardFrom(lastTransitionIndex, newIndex, c.mediaItemCount)) TrackChange.NEXT
-                    else TrackChange.PREVIOUS
+                Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> // skip/prev/swipe o salto en la cola
+                    // Si vino de un skip explícito, usa su dirección real; si no (salto por índice
+                    // desde la cola), infiérela del cambio de índice.
+                    pendingSeekDirection
+                        ?: if (forwardFrom(lastTransitionIndex, newIndex, c.mediaItemCount)) TrackChange.NEXT
+                        else TrackChange.PREVIOUS
                 else -> TrackChange.DIRECT // REPEAT (repetir una): misma pista, sin slide
             }
+            pendingSeekDirection = null // consumida (o irrelevante para este tipo de transición)
             lastTransitionIndex = newIndex
             transitionId++
             // El estado se re-emite en onEvents (que agrupa esta transición); ahí se incluye.
@@ -213,6 +221,7 @@ class PlaybackRepository(context: Context) {
     fun playQueueItem(index: Int) {
         val c = controller ?: return
         if (index !in 0 until c.mediaItemCount) return
+        pendingSeekDirection = null // salto por índice: la dirección se infiere del cambio de índice
         c.seekToDefaultPosition(index)
         c.play()
     }
@@ -224,10 +233,12 @@ class PlaybackRepository(context: Context) {
     }
 
     fun next() {
+        pendingSeekDirection = TrackChange.NEXT // dirección conocida: no inferir por índice
         controller?.seekToNextMediaItem()
     }
 
     fun previous() {
+        pendingSeekDirection = TrackChange.PREVIOUS // dirección conocida: no inferir por índice
         controller?.seekToPreviousMediaItem()
     }
 
