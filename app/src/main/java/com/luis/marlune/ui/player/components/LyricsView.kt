@@ -65,7 +65,9 @@ fun LyricsView(
     state: LyricsUiState,
     reducedMotion: Boolean,
     folderError: Boolean,
+    internetEnabled: Boolean,
     onGrantAccess: (initialUri: Uri?) -> Unit,
+    onSearchOnline: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val surface = MarluneTheme.colors.surfaceElevated
@@ -76,7 +78,8 @@ fun LyricsView(
     ) {
         when (state) {
             LyricsUiState.Loading -> CenteredNote(stringResource(R.string.lyrics_loading))
-            is LyricsUiState.None -> EmptyLyrics(state.request, folderError, onGrantAccess)
+            LyricsUiState.Error -> CenteredNote(stringResource(R.string.lyrics_network_error))
+            is LyricsUiState.None -> EmptyLyrics(state.request, folderError, internetEnabled, onGrantAccess, onSearchOnline)
             is LyricsUiState.Plain -> PlainLyrics(state.lines)
             is LyricsUiState.Synced -> SyncedLyrics(state.lines, state.activeIndex, reducedMotion)
         }
@@ -182,7 +185,9 @@ private fun CenteredNote(text: String) {
 private fun EmptyLyrics(
     request: LyricsFolderRequest?,
     folderError: Boolean,
+    internetEnabled: Boolean,
     onGrantAccess: (Uri?) -> Unit,
+    onSearchOnline: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -199,45 +204,60 @@ private fun EmptyLyrics(
                 color = MarluneTheme.colors.textTertiary,
                 textAlign = TextAlign.Center,
             )
-            return@Column
-        }
-
-        // Falta acceso a la carpeta de ESTA canción: lenguaje humano + nombre visible + botón.
-        Text(
-            text = stringResource(R.string.lyrics_need_access, request.folderName),
-            style = MarluneTheme.typography.bodyMedium,
-            color = MarluneTheme.colors.textSecondary,
-            textAlign = TextAlign.Center,
-        )
-        if (folderError) {
-            Spacer(Modifier.height(10.dp))
+        } else {
+            // Falta acceso a la carpeta de ESTA canción: lenguaje humano + nombre visible + botón.
             Text(
-                text = stringResource(R.string.lyrics_wrong_folder),
-                style = MarluneTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
+                text = stringResource(R.string.lyrics_need_access, request.folderName),
+                style = MarluneTheme.typography.bodyMedium,
+                color = MarluneTheme.colors.textSecondary,
                 textAlign = TextAlign.Center,
             )
+            if (folderError) {
+                Spacer(Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.lyrics_wrong_folder),
+                    style = MarluneTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(MarluneTheme.colors.accent.copy(alpha = 0.14f))
+                    .clickable { onGrantAccess(request.initialUri) }
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.FolderOpen,
+                    contentDescription = null,
+                    tint = MarluneTheme.colors.accent,
+                    modifier = Modifier.size(18.dp),
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = stringResource(R.string.lyrics_grant),
+                    style = MarluneTheme.typography.labelLarge,
+                    color = MarluneTheme.colors.accent,
+                )
+            }
         }
-        Spacer(Modifier.height(18.dp))
-        Row(
-            modifier = Modifier
-                .clip(RoundedCornerShape(50))
-                .background(MarluneTheme.colors.accent.copy(alpha = 0.14f))
-                .clickable { onGrantAccess(request.initialUri) }
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.FolderOpen,
-                contentDescription = null,
-                tint = MarluneTheme.colors.accent,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
+
+        // Descubrimiento: con el opt-in de red APAGADO, enlace discreto que lleva a Ajustes (no lo
+        // enciende por el usuario). Con el ajuste ON no aparece (ya se intentó la red).
+        if (!internetEnabled) {
+            Spacer(Modifier.height(16.dp))
             Text(
-                text = stringResource(R.string.lyrics_grant),
-                style = MarluneTheme.typography.labelLarge,
-                color = MarluneTheme.colors.accent,
+                text = stringResource(R.string.lyrics_search_online),
+                style = MarluneTheme.typography.bodySmall,
+                color = MarluneTheme.colors.textTertiary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable { onSearchOnline() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
             )
         }
     }

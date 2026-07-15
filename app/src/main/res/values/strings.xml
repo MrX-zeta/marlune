@@ -56,6 +56,15 @@
     <string name="lyrics_need_access">Marlune necesita acceso a la carpeta «%1$s» para leer sus letras</string>
     <string name="lyrics_grant">Conceder acceso</string>
     <string name="lyrics_wrong_folder">Esa carpeta no contiene esta canción. Inténtalo de nuevo.</string>
+    <string name="lyrics_network_error">Sin conexión. No se pudo buscar la letra.</string>
+    <string name="lyrics_search_online">Buscar letras en internet</string>
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_lyrics_section">Letras</string>
+    <string name="settings_internet_lyrics">Buscar letras en internet</string>
+    <string name="settings_internet_lyrics_desc">Envía el título y artista de la canción a un servicio de letras (LRCLIB). Desactivado, Marlune no se conecta a internet.</string>
+    <string name="settings_clear_cache">Borrar caché de letras</string>
+    <string name="settings_clear_cache_done">Caché de letras borrada</string>
+    <string name="settings_open">Ajustes</string>
 
     <!-- Inicio -->
     <string name="greeting_morning">Buenos días</string>

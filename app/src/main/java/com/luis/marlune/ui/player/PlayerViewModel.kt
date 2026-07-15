@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.luis.marlune.data.datastore.SettingsStore
 import com.luis.marlune.data.repository.AddFolderResult
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.LyricsRepository
+import com.luis.marlune.data.repository.LyricsResolution
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.domain.model.LyricLine
 import com.luis.marlune.domain.model.Lyrics
@@ -45,7 +47,12 @@ class PlayerViewModel(
     private val favorites: FavoritesRepository,
     private val music: MusicRepository,
     private val lyrics: LyricsRepository,
+    private val settings: SettingsStore,
 ) : ViewModel() {
+
+    /** Opt-in de letras por internet (para el enlace de descubrimiento en el panel vacío). */
+    val internetLyricsEnabled: StateFlow<Boolean> =
+        settings.internetLyrics.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     // Id de la pista actual, para alternar su favorito.
     private var currentSongId: Long? = null
@@ -54,35 +61,46 @@ class PlayerViewModel(
         combine(playback.state, favorites.favoriteIds) { state, favIds -> state.toUiState(favIds) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerUiState.Empty)
 
-    // --- Letras (100% local) ---
-    private data class LyricsLoad(val loading: Boolean, val lyrics: Lyrics?, val request: LyricsFolderRequest?)
+    // --- Letras (local + red opt-in) ---
+    private data class LyricsLoad(
+        val loading: Boolean,
+        val resolution: LyricsResolution?,
+        val request: LyricsFolderRequest?,
+    )
 
-    // Resuelve la letra al cambiar de pista O al cambiar las carpetas concedidas; emite "cargando"
-    // mientras va a IO, y si no hay letra deduce si falta conceder la carpeta de ESA canción.
+    // Resuelve al cambiar de pista, de carpetas concedidas, o del ajuste de red; emite "cargando"
+    // mientras va a IO. La red solo se usa si el opt-in está ON (último recurso).
     @OptIn(ExperimentalCoroutinesApi::class)
     private val loadedLyrics: Flow<LyricsLoad> =
         combine(
             playback.state.map { it.mediaId }.distinctUntilChanged(),
             lyrics.grantedFolders.distinctUntilChanged(),
-        ) { mediaId, folders -> mediaId to folders }
+            settings.internetLyrics.distinctUntilChanged(),
+        ) { mediaId, folders, net -> Triple(mediaId, folders, net) }
             .distinctUntilChanged()
-            .transformLatest { (mediaId, _) ->
-                emit(LyricsLoad(loading = true, lyrics = null, request = null))
+            .transformLatest { (mediaId, _, net) ->
+                emit(LyricsLoad(loading = true, resolution = null, request = null))
                 val song = songFor(mediaId)
-                val lrc = song?.let { lyrics.lyricsFor(it) }
-                val request = if (lrc == null && song != null) lyrics.folderRequestFor(song) else null
-                emit(LyricsLoad(loading = false, lyrics = lrc, request = request))
+                if (song == null) {
+                    emit(LyricsLoad(false, LyricsResolution.NotFound, null))
+                    return@transformLatest
+                }
+                val res = lyrics.resolve(song, allowNetwork = net)
+                val request = if (res is LyricsResolution.NotFound) lyrics.folderRequestFor(song) else null
+                emit(LyricsLoad(false, res, request))
             }
 
     /** Estado de la vista de letras: la línea activa (sincronizada) sigue la posición del player. */
     val lyricsState: StateFlow<LyricsUiState> =
         combine(loadedLyrics, playback.state) { load, state ->
-            val lrc = load.lyrics
+            val res = load.resolution
             when {
                 load.loading -> LyricsUiState.Loading
-                lrc == null -> LyricsUiState.None(request = load.request)
-                lrc.synced -> LyricsUiState.Synced(lrc.lines, activeIndex(lrc.lines, state.positionMs))
-                else -> LyricsUiState.Plain(lrc.lines.map { it.text })
+                res is LyricsResolution.Found && res.lyrics.synced ->
+                    LyricsUiState.Synced(res.lyrics.lines, activeIndex(res.lyrics.lines, state.positionMs))
+                res is LyricsResolution.Found -> LyricsUiState.Plain(res.lyrics.lines.map { it.text })
+                res is LyricsResolution.NetworkError -> LyricsUiState.Error
+                else -> LyricsUiState.None(request = load.request)
             }
         }.distinctUntilChanged()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LyricsUiState.Loading)
@@ -174,7 +192,8 @@ class PlayerViewModel(
             favorites: FavoritesRepository,
             music: MusicRepository,
             lyrics: LyricsRepository,
+            settings: SettingsStore,
         ): androidx.lifecycle.ViewModelProvider.Factory =
-            viewModelFactory { initializer { PlayerViewModel(playback, favorites, music, lyrics) } }
+            viewModelFactory { initializer { PlayerViewModel(playback, favorites, music, lyrics, settings) } }
     }
 }

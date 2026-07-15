@@ -50,6 +50,7 @@ import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberLyricsRepository
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
+import com.luis.marlune.di.rememberSettingsStore
 import com.luis.marlune.ui.detail.AlbumDetailRoute
 import com.luis.marlune.ui.detail.AlbumsRoute
 import com.luis.marlune.ui.detail.ArtistDetailRoute
@@ -69,6 +70,7 @@ import com.luis.marlune.ui.player.PlayerScreen
 import com.luis.marlune.ui.permissions.PermissionRationaleScreen
 import com.luis.marlune.ui.permissions.RequestNotificationPermissionOnce
 import com.luis.marlune.ui.permissions.rememberAudioPermissionState
+import com.luis.marlune.ui.settings.SettingsRoute
 import com.luis.marlune.ui.player.PlayerViewModel
 import com.luis.marlune.ui.search.SearchRoute
 import com.luis.marlune.ui.theme.LocalReducedMotion
@@ -120,11 +122,13 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                 rememberFavoritesRepository(),
                 rememberMusicRepository(),
                 rememberLyricsRepository(),
+                rememberSettingsStore(),
             ),
         )
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
     val lyricsState by playerViewModel.lyricsState.collectAsStateWithLifecycle()
     val lyricsFolderError by playerViewModel.folderError.collectAsStateWithLifecycle()
+    val internetLyricsEnabled by playerViewModel.internetLyricsEnabled.collectAsStateWithLifecycle()
 
     // Acento dinámico COMPARTIDO: se extrae (Palette, fuera del hilo principal) al cambiar la pista
     // ACTUAL —aquí, siempre compuesto—, no dentro de Now Playing. Así el color se refresca en tiempo
@@ -211,9 +215,14 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     uiState = playerState,
                     lyricsState = lyricsState,
                     folderError = lyricsFolderError,
+                    internetLyricsEnabled = internetLyricsEnabled,
                     onEvent = dispatchPlayer,
                     onMinimize = { playerExpanded = false },
                     onLyricsFolderPicked = playerViewModel::onLyricsFolderPicked,
+                    onOpenSettings = {
+                        playerExpanded = false
+                        navController.navigate(Routes.SETTINGS)
+                    },
                     artModifier = artModifier,
                     titleModifier = titleModifier,
                     artistModifier = artistModifier,
@@ -315,8 +324,12 @@ private fun MarluneNavHost(
                 onOpenLiked = { navController.navigate(Routes.LIKED) },
                 onOpenRecentlyAdded = { navController.navigate(Routes.RECENTLY_ADDED) },
                 onSeeAllRecent = { navController.navigate(Routes.HISTORY) },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
                 contentPadding = contentPadding,
             )
+        }
+        composable(Routes.SETTINGS) {
+            SettingsRoute(onBack = navController::popBackStack, contentPadding = contentPadding)
         }
         composable(Routes.LIBRARY) {
             LibraryRoute(

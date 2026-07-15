@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +54,7 @@ fun HomeRoute(
     onOpenLiked: () -> Unit,
     onOpenRecentlyAdded: () -> Unit,
     onSeeAllRecent: () -> Unit,
+    onOpenSettings: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = viewModel(
@@ -76,6 +80,7 @@ fun HomeRoute(
         onMix = viewModel::playMix,
         onContinue = viewModel::resumeSession,
         onSeeAllRecent = onSeeAllRecent,
+        onOpenSettings = onOpenSettings,
         contentPadding = contentPadding,
         modifier = modifier,
     )
@@ -97,6 +102,7 @@ fun HomeScreen(
     onMix: () -> Unit,
     onContinue: () -> Unit,
     onSeeAllRecent: () -> Unit,
+    onOpenSettings: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
 ) {
@@ -110,12 +116,22 @@ fun HomeScreen(
         ) {
             Spacer(Modifier.height(16.dp))
 
-            // Saludo protagonista (único hero de la cabecera).
-            Text(
-                text = stringResource(uiState.greeting.labelRes),
-                style = MarluneTheme.typography.headlineMedium,
-                color = MarluneTheme.colors.textPrimary,
-            )
+            // Saludo protagonista (único hero de la cabecera) + acceso a Ajustes.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = stringResource(uiState.greeting.labelRes),
+                    style = MarluneTheme.typography.headlineMedium,
+                    color = MarluneTheme.colors.textPrimary,
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(onClick = onOpenSettings) {
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = stringResource(R.string.settings_open),
+                        tint = MarluneTheme.colors.textSecondary,
+                    )
+                }
+            }
 
             Spacer(Modifier.height(28.dp))
             RecentHeader(onSeeAllRecent = onSeeAllRecent)
@@ -205,6 +221,7 @@ private fun HomeScreenPreview() {
             onMix = {},
             onContinue = {},
             onSeeAllRecent = {},
+            onOpenSettings = {},
             contentPadding = PaddingValues(0.dp),
         )
     }

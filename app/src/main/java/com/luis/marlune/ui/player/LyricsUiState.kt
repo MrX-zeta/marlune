@@ -8,8 +8,11 @@ import com.luis.marlune.domain.model.LyricsFolderRequest
  * de datos ([com.luis.marlune.data.repository.LyricsRepository]).
  */
 sealed interface LyricsUiState {
-    /** Resolviendo la letra de la pista actual (IO). */
+    /** Resolviendo la letra de la pista actual (IO, incluida la posible búsqueda en red). */
     data object Loading : LyricsUiState
+
+    /** La búsqueda en red falló (sin conexión / error). Mensaje breve, sin alarmas. */
+    data object Error : LyricsUiState
 
     /**
      * No hay letra. Si [request] no es null, la carpeta de esta canción aún no tiene acceso y se

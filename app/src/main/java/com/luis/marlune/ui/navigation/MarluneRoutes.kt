@@ -9,6 +9,8 @@ object Routes {
     const val LIBRARY = "library"
     const val SEARCH = "search"
 
+    const val SETTINGS = "settings"
+
     const val LIKED = "liked"
     const val RECENTLY_ADDED = "recently_added"
     const val HISTORY = "history"

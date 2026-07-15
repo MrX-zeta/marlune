@@ -80,9 +80,11 @@ fun PlayerScreen(
     uiState: PlayerUiState,
     lyricsState: LyricsUiState,
     folderError: Boolean,
+    internetLyricsEnabled: Boolean,
     onEvent: (PlayerEvent) -> Unit,
     onMinimize: () -> Unit,
     onLyricsFolderPicked: (Uri) -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
     titleModifier: Modifier = Modifier,
@@ -230,7 +232,9 @@ fun PlayerScreen(
                         state = lyricsState,
                         reducedMotion = reducedMotion,
                         folderError = folderError,
+                        internetEnabled = internetLyricsEnabled,
                         onGrantAccess = { initialUri -> folderLauncher.launch(initialUri) },
+                        onSearchOnline = onOpenSettings,
                         modifier = Modifier.fillMaxSize(),
                     )
                 },
@@ -453,9 +457,11 @@ private fun PlayerScreenPlayingPreview() {
             uiState = PlayerUiState.Preview.copy(isPlaying = true, isShuffleOn = true, isLiked = true),
             lyricsState = LyricsUiState.None(request = null),
             folderError = false,
+            internetLyricsEnabled = false,
             onEvent = {},
             onMinimize = {},
             onLyricsFolderPicked = {},
+            onOpenSettings = {},
         )
     }
 }
@@ -468,9 +474,11 @@ private fun PlayerScreenPausedPreview() {
             uiState = PlayerUiState.Preview.copy(isPlaying = false, repeatMode = RepeatMode.ONE),
             lyricsState = LyricsUiState.None(request = null),
             folderError = false,
+            internetLyricsEnabled = false,
             onEvent = {},
             onMinimize = {},
             onLyricsFolderPicked = {},
+            onOpenSettings = {},
         )
     }
 }
