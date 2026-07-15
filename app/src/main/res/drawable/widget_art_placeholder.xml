@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholder de carátula: superficie elevada con una nota musical tenue centrada. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#1F1C2B" />
+            <corners android:radius="10dp" />
+        </shape>
+    </item>
+    <item
+        android:width="22dp"
+        android:height="22dp"
+        android:gravity="center"
+        android:drawable="@drawable/ic_widget_music_note" />
+</layer-list>

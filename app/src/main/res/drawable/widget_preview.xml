@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Vista previa estática para el selector de widgets (no es la UI real, solo un boceto del compacto). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="300dp"
+    android:height="60dp"
+    android:viewportWidth="300"
+    android:viewportHeight="60">
+    <!-- Fondo -->
+    <path
+        android:fillColor="#15131E"
+        android:pathData="M12,0h276a12,12 0,0 1,12 12v36a12,12 0,0 1,-12 12h-276a12,12 0,0 1,-12 -12v-36a12,12 0,0 1,12 -12z" />
+    <!-- Carátula -->
+    <path
+        android:fillColor="#1F1C2B"
+        android:pathData="M14,10h40a6,6 0,0 1,6 6v28a6,6 0,0 1,-6 6h-40a6,6 0,0 1,-6 -6v-28a6,6 0,0 1,6 -6z" />
+    <path
+        android:fillColor="#6FD8C6"
+        android:pathData="M34,22v10.55c-0.59,-0.34 -1.27,-0.55 -2,-0.55 -2.21,0 -4,1.79 -4,4s1.79,4 4,4 4,-1.79 4,-4V26h4V22h-6z" />
+    <!-- Título / artista -->
+    <path
+        android:fillColor="#F3F1F8"
+        android:pathData="M76,22h90v5h-90z" />
+    <path
+        android:fillColor="#ABA6BC"
+        android:pathData="M76,33h60v4h-60z" />
+    <!-- Anterior -->
+    <path
+        android:fillColor="#ABA6BC"
+        android:pathData="M198,24h1.5v12h-1.5zM200,30l6,-4.5v9z" />
+    <!-- Play (círculo acento) -->
+    <path
+        android:fillColor="#8E7DF0"
+        android:pathData="M234,16m-14,0a14,14 0,1 0,28 0a14,14 0,1 0,-28 0" />
+    <path
+        android:fillColor="#0A0910"
+        android:pathData="M230,24l9,6l-9,6z" />
+    <!-- Siguiente -->
+    <path
+        android:fillColor="#ABA6BC"
+        android:pathData="M262,25.5l6,4.5l-6,4.5zM268.5,24h1.5v12h-1.5z" />
+</vector>

@@ -1,14 +1,31 @@
 package com.luis.marlune.playback
 
+import android.util.Log
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.glance.appwidget.updateAll
 import com.luis.marlune.R
+import com.luis.marlune.ui.widget.MarluneWidget
+import com.luis.marlune.ui.widget.WidgetPlaybackBus
+import com.luis.marlune.ui.widget.WidgetPlaybackState
+import com.luis.marlune.ui.widget.loadWidgetArtwork
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Servicio de reproducción de Marlune: aloja el [ExoPlayer] y su [MediaSession]. La UI se conecta
@@ -19,10 +36,27 @@ import com.luis.marlune.R
  * llamada) vía `setAudioAttributes(..., handleAudioFocus = true)`; pausa al desconectar auriculares/
  * Bluetooth vía `setHandleAudioBecomingNoisy(true)`; y la notificación de reproducción con controles
  * (incluida su gestión en segundo plano y al deslizar) a través de `MediaSessionService`.
+ *
+ * Además EMPUJA el estado al WIDGET: como el servicio vive mientras suena la música y conoce cada
+ * cambio en el instante en que ocurre, publica en [WidgetPlaybackBus] y llama a `updateAll` en cada
+ * evento. Así el widget no depende del `MediaController` de la UI (que se libera al cerrar la app) y no
+ * sufre reconexiones ni congelamientos. Es una vía INDEPENDIENTE; no altera el connect/release de la UI.
  */
 class MarluneMediaService : MediaSessionService() {
 
     private var mediaSession: MediaSession? = null
+
+    // Scope en el hilo principal: el acceso al player (posición, isPlaying…) debe ocurrir en main.
+    private val widgetScope = CoroutineScope(Dispatchers.Main.immediate + SupervisorJob())
+    private var tickerJob: Job? = null
+    private var artworkJob: Job? = null
+    @Volatile private var currentArtwork: android.graphics.Bitmap? = null
+    private var artworkKey: String? = null
+
+    // En cada evento relevante del player, refresca el estado del widget y lo empuja al launcher.
+    private val widgetListener = object : Player.Listener {
+        override fun onEvents(player: Player, events: Player.Events) = publishWidgetState()
+    }
 
     @OptIn(UnstableApi::class) // ExoPlayer y su Builder están marcados como API inestable en Media3.
     override fun onCreate() {
@@ -46,6 +80,12 @@ class MarluneMediaService : MediaSessionService() {
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this).build()
         notificationProvider.setSmallIcon(R.drawable.ic_notification)
         setMediaNotificationProvider(notificationProvider)
+
+        // Vía del widget: escucha eventos, expón el player para el transporte y siembra el estado.
+        player.addListener(widgetListener)
+        WidgetPlaybackBus.attachPlayer(player)
+        Log.d(TAG, "service onCreate: player attached to widget bus")
+        publishWidgetState()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
@@ -62,11 +102,91 @@ class MarluneMediaService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        tickerJob?.cancel()
+        artworkJob?.cancel()
+        mediaSession?.player?.removeListener(widgetListener)
+        WidgetPlaybackBus.detachPlayer() // deja el estado vacío → el widget muestra "Toca para abrir"
+        Log.d(TAG, "service onDestroy: detached; pushing empty widget")
+        // Empuje final en un scope independiente (widgetScope se cancela abajo).
+        CoroutineScope(Dispatchers.Default).launch {
+            runCatching { MarluneWidget().updateAll(applicationContext) }
+        }
+        widgetScope.cancel()
         mediaSession?.run {
             player.release()
             release()
         }
         mediaSession = null
         super.onDestroy()
+    }
+
+    /** Lee el estado real del player (en main), refresca la carátula si cambió la pista y empuja al widget. */
+    private fun publishWidgetState() {
+        val p = mediaSession?.player ?: return
+        val item = p.currentMediaItem
+        refreshArtworkIfNeeded(item)
+        val hasItem = item != null && p.mediaItemCount > 0
+        WidgetPlaybackBus.publish(
+            WidgetPlaybackState(
+                hasItem = hasItem,
+                mediaId = item?.mediaId,
+                title = item?.mediaMetadata?.title?.toString().orEmpty(),
+                artist = item?.mediaMetadata?.artist?.toString().orEmpty(),
+                artwork = currentArtwork,
+                isPlaying = p.isPlaying,
+                shuffle = p.shuffleModeEnabled,
+                positionMs = p.currentPosition.coerceAtLeast(0L),
+                durationMs = if (p.duration == C.TIME_UNSET) 0L else p.duration.coerceAtLeast(0L),
+            ),
+        )
+        Log.d(TAG, "publish: playing=${p.isPlaying} title='${item?.mediaMetadata?.title}' pos=${p.currentPosition}")
+        updateWidgets()
+        syncTicker(p.isPlaying)
+    }
+
+    /** Carga la carátula (Coil) solo cuando cambia la pista; una instancia nueva por pista (nota MIUI). */
+    private fun refreshArtworkIfNeeded(item: MediaItem?) {
+        val id = item?.mediaId
+        if (id == artworkKey) return
+        artworkKey = id
+        currentArtwork = null
+        artworkJob?.cancel()
+        val uri = item?.mediaMetadata?.artworkUri ?: return
+        artworkJob = widgetScope.launch {
+            val bmp = withContext(Dispatchers.Default) { loadWidgetArtwork(applicationContext, uri, id) }
+            if (artworkKey == id) {
+                currentArtwork = bmp
+                publishWidgetState() // re-publica ya con la carátula (early-return evita bucle: misma key)
+            }
+        }
+    }
+
+    private fun updateWidgets() {
+        widgetScope.launch { runCatching { MarluneWidget().updateAll(applicationContext) } }
+    }
+
+    /** Ticker de posición: mientras suena, re-publica cada ~3 s para que la marea avance (sin animación). */
+    private fun syncTicker(playing: Boolean) {
+        tickerJob?.cancel()
+        if (!playing) return
+        tickerJob = widgetScope.launch {
+            while (isActive) {
+                delay(POSITION_PUSH_MS)
+                val p = mediaSession?.player ?: break
+                if (!p.isPlaying) break
+                WidgetPlaybackBus.publish(
+                    WidgetPlaybackBus.state.value.copy(
+                        positionMs = p.currentPosition.coerceAtLeast(0L),
+                        durationMs = if (p.duration == C.TIME_UNSET) 0L else p.duration.coerceAtLeast(0L),
+                    ),
+                )
+                updateWidgets()
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG = "MarluneWidget"
+        const val POSITION_PUSH_MS = 3_000L
     }
 }

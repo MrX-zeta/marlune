@@ -107,7 +107,11 @@ private const val ARTIST_KEY = "player-artist"
  */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-fun MarluneApp(modifier: Modifier = Modifier) {
+fun MarluneApp(
+    modifier: Modifier = Modifier,
+    openNowPlaying: Boolean = false,
+    onNowPlayingConsumed: () -> Unit = {},
+) {
     // Primera experiencia: en el PRIMER arranque se muestra el onboarding (bienvenida + explicación
     // del permiso de música), nunca diálogos de permiso a secas. Ya completado, la app abre directa.
     val appPrefs = rememberAppPrefsStore()
@@ -187,6 +191,15 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     // Callback ESTABLE: al cambiar el estado de reproducción no cambia su identidad, así que el
     // contenido (NavHost) no se recompone por el playback (el mini-player sí, donde se usa).
     val expandPlayer = remember { { playerExpanded = true } }
+
+    // Petición del widget de abrir Now Playing: expande el reproductor si hay pista. Se consume una
+    // sola vez (aditivo; no altera el resto del flujo). Sin pista, solo se consume (queda en Inicio).
+    LaunchedEffect(openNowPlaying) {
+        if (openNowPlaying) {
+            if (playerState.hasTrack) playerExpanded = true
+            onNowPlayingConsumed()
+        }
+    }
 
     // Apertura de la hoja de cola hoisteada aquí para poder abrirla desde el snackbar de "Añadir a la
     // cola" (que vive en Biblioteca, otra pantalla): abrirla expande el reproductor y muestra la hoja.

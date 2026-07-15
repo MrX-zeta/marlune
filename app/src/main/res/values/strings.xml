@@ -170,4 +170,12 @@
     <string name="onboarding_welcome_title">Te damos la bienvenida a Marlune</string>
     <string name="onboarding_welcome_body">Tu música local. Sin anuncios, sin cuentas.</string>
     <string name="onboarding_continue">Continuar</string>
+
+    <!-- Widget de pantalla de inicio -->
+    <string name="widget_description">Controla la reproducción de Marlune desde la pantalla de inicio.</string>
+    <string name="widget_empty">Toca para abrir</string>
+    <string name="settings_home_section">Pantalla de inicio</string>
+    <string name="settings_add_widget_title">Añadir widget a la pantalla de inicio</string>
+    <string name="settings_add_widget_desc">Controla la música sin abrir la app.</string>
+    <string name="settings_add_widget_manual">Mantén pulsada la pantalla de inicio y elige Widgets › Marlune.</string>
 </resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fondo del widget: superficie #15131E con esquinas redondeadas. Un drawable de forma (no
+     cornerRadius de Glance) para que el redondeo funcione igual por debajo de API 31. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="#15131E" />
+    <corners android:radius="24dp" />
+</shape>

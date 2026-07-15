@@ -50,6 +50,18 @@
                 <action android:name="androidx.media3.session.MediaSessionService" />
             </intent-filter>
         </service>
+
+        <!-- Widget de pantalla de inicio (Jetpack Glance). Su UI la sirve MarluneWidget. -->
+        <receiver
+            android:name=".ui.widget.MarluneWidgetReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/marlune_widget_info" />
+        </receiver>
     </application>
 
 </manifest>
