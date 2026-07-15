@@ -5,6 +5,9 @@ import androidx.room.Room
 import com.luis.marlune.data.database.MarluneDatabase
 import com.luis.marlune.data.datastore.LyricsFolderStore
 import com.luis.marlune.data.datastore.SessionStore
+import com.luis.marlune.data.datastore.SettingsStore
+import com.luis.marlune.data.lyrics.LrcLibClient
+import com.luis.marlune.data.lyrics.NetworkLyricsCache
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
@@ -64,8 +67,19 @@ class AppContainer(context: Context) {
 
     private val lyricsFolderStore = LyricsFolderStore(context.applicationContext)
 
-    /** Letras locales (.lrc por SAF; tags embebidos en Fase 2). Lectura/parseo en IO, cacheado. */
-    val lyricsRepository: LyricsRepository = LyricsRepository(context.applicationContext, lyricsFolderStore)
+    /** Ajustes de la app (opt-in de letras por internet, off por defecto). */
+    val settingsStore = SettingsStore(context.applicationContext)
+
+    /**
+     * Letras: local (.lrc por SAF) y, SOLO si el usuario activa el opt-in, red (LRCLIB) como último
+     * recurso. Lectura/parseo en IO, cacheado (memoria + disco privado para las descargadas).
+     */
+    val lyricsRepository: LyricsRepository = LyricsRepository(
+        context.applicationContext,
+        lyricsFolderStore,
+        LrcLibClient(),
+        NetworkLyricsCache(context.applicationContext),
+    )
 
     init {
         recordPlaysToHistory()

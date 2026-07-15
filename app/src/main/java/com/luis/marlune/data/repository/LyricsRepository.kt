@@ -6,7 +6,12 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import com.luis.marlune.data.datastore.LyricsFolderStore
+import com.luis.marlune.data.lyrics.LrcLibClient
+import com.luis.marlune.data.lyrics.LrcLibLyrics
+import com.luis.marlune.data.lyrics.LrcLibResult
 import com.luis.marlune.data.lyrics.LrcParser
+import com.luis.marlune.data.lyrics.NetworkLyricsCache
+import com.luis.marlune.domain.model.LyricLine
 import com.luis.marlune.domain.model.Lyrics
 import com.luis.marlune.domain.model.LyricsFolderRequest
 import com.luis.marlune.domain.model.Song
@@ -24,6 +29,13 @@ import java.util.concurrent.ConcurrentHashMap
 /** Resultado de conceder una carpeta en el contexto de una canción. */
 enum class AddFolderResult { ADDED, WRONG_FOLDER }
 
+/** Resultado de resolver la letra (local o red): encontrada, no encontrada, o error de red. */
+sealed interface LyricsResolution {
+    data class Found(val lyrics: Lyrics) : LyricsResolution
+    data object NotFound : LyricsResolution
+    data object NetworkError : LyricsResolution
+}
+
 /**
  * Fuente de letras 100% LOCAL. Prioridad: (1) `.lrc` en las carpetas SAF concedidas; (2) [Fase 2]
  * tags embebidos. Lectura/parseo en [Dispatchers.IO], cacheado por canción.
@@ -36,6 +48,8 @@ enum class AddFolderResult { ADDED, WRONG_FOLDER }
 class LyricsRepository(
     context: Context,
     private val folderStore: LyricsFolderStore,
+    private val lrcLibClient: LrcLibClient,
+    private val networkCache: NetworkLyricsCache,
 ) {
 
     private val appContext = context.applicationContext
@@ -52,12 +66,47 @@ class LyricsRepository(
     // Caché por canción (incluye "no hay letra" para no re-buscar en cada apertura).
     private val cache = ConcurrentHashMap<Long, CachedLyrics>()
 
-    /** Letra de [song] (o `null` si no hay). Cacheada; segura para llamar por cada cambio de pista. */
+    /** Letra LOCAL de [song] (o `null`). Cacheada; segura para llamar por cada cambio de pista. */
     suspend fun lyricsFor(song: Song): Lyrics? = withContext(Dispatchers.IO) {
         cache[song.id]?.let { return@withContext it.value }
         val resolved = loadFromLrc(song)
         cache[song.id] = CachedLyrics(resolved)
         resolved
+    }
+
+    /**
+     * Resuelve la letra en orden: LOCAL (.lrc) → caché LOCAL de letras descargadas → [si `allowNetwork`]
+     * LRCLIB. La caché es dato LOCAL y se muestra SIEMPRE (aunque el ajuste esté apagado o no haya
+     * conexión): mostrar lo ya descargado no implica red. `allowNetwork` (el ajuste) solo controla
+     * peticiones NUEVAS: con `false` jamás se sale a internet, pero lo cacheado sigue apareciendo. La
+     * única forma de olvidar lo cacheado es [clearNetworkCache].
+     */
+    suspend fun resolve(song: Song, allowNetwork: Boolean): LyricsResolution = withContext(Dispatchers.IO) {
+        lyricsFor(song)?.let { return@withContext LyricsResolution.Found(it) }
+        // Caché local de descargadas: dato local, se muestra con o sin el ajuste / con o sin red.
+        networkCache.get(song.id)?.let { return@withContext LyricsResolution.Found(it) }
+        // A partir de aquí SÍ es una petición nueva: solo si el ajuste opt-in está encendido.
+        if (!allowNetwork) return@withContext LyricsResolution.NotFound
+        when (val r = lrcLibClient.fetch(song.title, song.artist, song.album, song.durationMs / 1000)) {
+            is LrcLibResult.Found -> {
+                networkCache.put(song.id, r.lyrics.syncedLyrics, r.lyrics.plainLyrics)
+                toLyrics(r.lyrics)?.let { LyricsResolution.Found(it) } ?: LyricsResolution.NotFound
+            }
+            LrcLibResult.NotFound -> LyricsResolution.NotFound
+            LrcLibResult.NetworkError -> LyricsResolution.NetworkError
+        }
+    }
+
+    /** Borra la caché de letras descargadas (Ajustes). */
+    fun clearNetworkCache() = networkCache.clear()
+
+    private fun toLyrics(l: LrcLibLyrics): Lyrics? {
+        l.syncedLyrics?.let { s -> LrcParser.parse(s)?.let { return it } }
+        l.plainLyrics?.let { p ->
+            val lines = p.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.map { LyricLine(null, it) }.toList()
+            if (lines.isNotEmpty()) return Lyrics(lines, synced = false)
+        }
+        return null
     }
 
     /**

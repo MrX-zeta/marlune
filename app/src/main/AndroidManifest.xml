@@ -9,10 +9,14 @@
         android:name="android.permission.READ_EXTERNAL_STORAGE"
         android:maxSdkVersion="32" />
 
-    <!-- Reproducción en segundo plano (Media3 MediaSessionService) y su notificación. Sin red. -->
+    <!-- Reproducción en segundo plano (Media3 MediaSessionService) y su notificación. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- ÚNICA excepción a offline: búsqueda de letras en internet (LRCLIB), OPT-IN y apagada por
+         defecto. Con el ajuste apagado, la app no hace NINGUNA petición de red. -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".MarluneApplication"
