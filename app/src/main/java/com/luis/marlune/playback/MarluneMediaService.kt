@@ -5,8 +5,10 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.luis.marlune.R
 
 /**
  * Servicio de reproducción de Marlune: aloja el [ExoPlayer] y su [MediaSession]. La UI se conecta
@@ -38,6 +40,12 @@ class MarluneMediaService : MediaSessionService() {
             .build()
 
         mediaSession = MediaSession.Builder(this, player).build()
+
+        // Small icon de la notificación de reproducción: icono PLANO monocromo (`ic_notification`); el
+        // sistema lo tiñe, así que NO se le da color (un icono a color se vería como un cuadro).
+        val notificationProvider = DefaultMediaNotificationProvider.Builder(this).build()
+        notificationProvider.setSmallIcon(R.drawable.ic_notification)
+        setMediaNotificationProvider(notificationProvider)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
