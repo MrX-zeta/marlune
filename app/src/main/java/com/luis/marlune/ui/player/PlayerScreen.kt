@@ -93,6 +93,7 @@ fun PlayerScreen(
     onCloseQueue: () -> Unit,
     onJumpToQueueItem: (Int) -> Unit,
     onRemoveQueueItem: (Int) -> Unit,
+    onMoveQueueItem: (Int, Int) -> Unit,
     modifier: Modifier = Modifier,
     artModifier: Modifier = Modifier,
     titleModifier: Modifier = Modifier,
@@ -308,6 +309,7 @@ fun PlayerScreen(
                 source = uiState.source,
                 onJumpTo = onJumpToQueueItem,
                 onRemove = onRemoveQueueItem,
+                onMove = onMoveQueueItem,
                 onDismiss = onCloseQueue,
             )
         }
@@ -503,6 +505,7 @@ private fun PlayerScreenPlayingPreview() {
             onCloseQueue = {},
             onJumpToQueueItem = {},
             onRemoveQueueItem = {},
+            onMoveQueueItem = { _, _ -> },
         )
     }
 }
@@ -526,6 +529,7 @@ private fun PlayerScreenPausedPreview() {
             onCloseQueue = {},
             onJumpToQueueItem = {},
             onRemoveQueueItem = {},
+            onMoveQueueItem = { _, _ -> },
         )
     }
 }

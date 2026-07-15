@@ -155,6 +155,9 @@ class PlayerViewModel(
     /** Quita la pista [index] de la cola (no toca biblioteca ni archivos). */
     fun removeQueueItem(index: Int) = playback.removeQueueItem(index)
 
+    /** Mueve la pista de [from] a [to] en la cola (reordena la reproducción en vivo). */
+    fun moveQueueItem(from: Int, to: Int) = playback.moveQueueItem(from, to)
+
     /**
      * Concede la carpeta SAF elegida en el contexto de la canción actual. Si esa carpeta NO contiene
      * la canción, marca el error (la UI ofrece reintentar) y NO la persiste. Si la contiene, se guarda

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -25,7 +26,9 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -37,6 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
 import com.luis.marlune.playback.QueueItem
+import com.luis.marlune.ui.components.rememberDragReorderState
+import com.luis.marlune.ui.components.reorderableItem
 import com.luis.marlune.ui.library.components.LibraryCover
 import com.luis.marlune.ui.library.components.NowPlayingBars
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -62,23 +67,37 @@ fun QueueSheet(
     source: String,
     onJumpTo: (Int) -> Unit,
     onRemove: (Int) -> Unit,
+    onMove: (from: Int, to: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    // Hoja SOBREPUESTA: abre a media altura (arranca en PartiallyExpanded) y se puede subir a completa
-    // o bajar para cerrar; el reproductor sigue visible tras el scrim. El contenido se dimensiona alto
-    // para que el punto parcial sea ~media pantalla y quede recorrido al arrastrar hacia arriba.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
+    val listState = rememberLazyListState()
+    val reorderState = rememberDragReorderState(listState)
     val current = queue.items.getOrNull(queue.currentIndex)
-    // Solo lo que VIENE (índice REAL > actual); el historial no se muestra. Se separan los añadidos a
-    // mano (sección manual) del resto (contexto); un manual sale de su sección al pasar a ser la actual.
-    val upcoming = buildList {
-        for (i in (queue.currentIndex + 1) until queue.items.size) add(i to queue.items[i])
+
+    // Orden LOCAL de lo que viene (índice REAL > actual), con clave estable; se re-sincroniza con la
+    // cola salvo mientras se arrastra (optimista). El arrastre solo reordena esto; se persiste al soltar.
+    val upcoming = remember { mutableStateListOf<QueueDragItem>() }
+    LaunchedEffect(queue.items, queue.currentIndex) {
+        if (reorderState.draggedKey == null) {
+            upcoming.clear()
+            for (i in (queue.currentIndex + 1) until queue.items.size) {
+                val it = queue.items[i]
+                upcoming.add(QueueDragItem(key = i, realIndex = i, item = it, manual = it.manual))
+            }
+        }
     }
-    val manualUpcoming = upcoming.filter { (_, item) -> item.manual }
-    val contextUpcoming = upcoming.filterNot { (_, item) -> item.manual }
-    // El contexto se ASOMA (unas pocas) y "Ver todo" expande el resto en la misma hoja.
     var showAllContext by remember { mutableStateOf(false) }
+    val manualUpcoming = upcoming.filter { it.manual }
+    val contextUpcoming = upcoming.filterNot { it.manual }
     val contextShown = if (showAllContext) contextUpcoming else contextUpcoming.take(ContextPreviewCount)
+
+    // Al soltar: mueve la reproducción EN VIVO (índices reales = actual + 1 + posición). Solo dentro de
+    // la misma sección (manual↔manual, contexto↔contexto), así el rango real es contiguo. No toca Room.
+    val onSettle: (Any, Int, Int) -> Unit = { _, from, to ->
+        onMove(queue.currentIndex + 1 + from, queue.currentIndex + 1 + to)
+    }
+    val sameSection: (QueueDragItem, QueueDragItem) -> Boolean = { a, b -> a.manual == b.manual }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -102,8 +121,8 @@ fun QueueSheet(
                 return@LazyColumn
             }
 
-            // Fila 1: la pista actual (resaltada, con ecualizador, sin ✕). Sin encabezado propio.
-            item(key = "cur:${queue.currentIndex}:${current.mediaId}", contentType = "queueRow") {
+            // Fila 1: la pista actual (resaltada, con ecualizador, sin ✕ y NO arrastrable).
+            item(key = "cur:${current.mediaId}", contentType = "queueRow") {
                 QueueRow(
                     item = current,
                     isCurrent = true,
@@ -113,40 +132,34 @@ fun QueueSheet(
                 )
             }
 
-            // Sección "A continuación en la cola": añadidas a mano y aún no reproducidas (solo si hay).
+            // Sección "A continuación en la cola": añadidas a mano (reordenables entre sí).
             if (manualUpcoming.isNotEmpty()) {
                 item(key = "hdr-manual") { QueueSectionHeader(stringResource(R.string.queue_section_added)) }
-                items(
-                    manualUpcoming,
-                    key = { (index, item) -> "m:$index:${item.mediaId}" },
-                    contentType = { _ -> "queueRow" },
-                ) { (index, item) ->
+                items(manualUpcoming, key = { it.key }, contentType = { "queueRow" }) { d ->
                     QueueRow(
-                        item = item,
+                        item = d.item,
                         isCurrent = false,
                         isPlaying = queue.isPlaying,
-                        onClick = { onJumpTo(index); onDismiss() },
-                        onRemove = { onRemove(index) },
+                        onClick = { onJumpTo(d.realIndex); onDismiss() },
+                        onRemove = { onRemove(d.realIndex) },
+                        modifier = reorderableItem(reorderState, d, upcoming, { it.key }, enabled = true, onSettle = onSettle, sameGroup = sameSection),
                     )
                 }
             }
 
-            // Contexto: encabezado discreto + solo las próximas; "Ver todo" expande el resto aquí mismo.
+            // Contexto: encabezado + solo las próximas; "Ver todo" expande (reordenables entre sí).
             if (contextUpcoming.isNotEmpty()) {
                 item(key = "hdr-context") {
                     QueueSectionHeader(stringResource(R.string.queue_section_from, source))
                 }
-                items(
-                    contextShown,
-                    key = { (index, item) -> "c:$index:${item.mediaId}" },
-                    contentType = { _ -> "queueRow" },
-                ) { (index, item) ->
+                items(contextShown, key = { it.key }, contentType = { "queueRow" }) { d ->
                     QueueRow(
-                        item = item,
+                        item = d.item,
                         isCurrent = false,
                         isPlaying = queue.isPlaying,
-                        onClick = { onJumpTo(index); onDismiss() },
-                        onRemove = { onRemove(index) },
+                        onClick = { onJumpTo(d.realIndex); onDismiss() },
+                        onRemove = { onRemove(d.realIndex) },
+                        modifier = reorderableItem(reorderState, d, upcoming, { it.key }, enabled = true, onSettle = onSettle, sameGroup = sameSection),
                     )
                 }
                 if (!showAllContext && contextUpcoming.size > ContextPreviewCount) {
@@ -156,6 +169,14 @@ fun QueueSheet(
         }
     }
 }
+
+/** Un ítem reordenable de la cola: clave estable ([key] = índice real al sincronizar) + su índice real. */
+private data class QueueDragItem(
+    val key: Int,
+    val realIndex: Int,
+    val item: QueueItem,
+    val manual: Boolean,
+)
 
 // ~90% de alto para que el punto parcial de la hoja sea media pantalla y quede recorrido al subir.
 private const val SheetHeightFraction = 0.9f
@@ -195,10 +216,11 @@ private fun QueueRow(
     isPlaying: Boolean,
     onClick: () -> Unit,
     onRemove: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val accent = remember(item.mediaId) { placeholderAccentFor(item.mediaId.toLongOrNull() ?: 0L) }
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)

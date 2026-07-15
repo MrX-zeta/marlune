@@ -272,6 +272,14 @@ class PlaybackRepository(context: Context) {
         if (index in 0 until c.mediaItemCount) c.removeMediaItem(index)
     }
 
+    /** Mueve una pista de la cola de [from] a [to] (índices reales). Reordena la reproducción EN VIVO. */
+    fun moveQueueItem(from: Int, to: Int) {
+        val c = controller ?: return
+        if (from != to && from in 0 until c.mediaItemCount && to in 0 until c.mediaItemCount) {
+            c.moveMediaItem(from, to)
+        }
+    }
+
     fun next() {
         pendingSeekDirection = TrackChange.NEXT // dirección conocida: no inferir por índice
         controller?.seekToNextMediaItem()

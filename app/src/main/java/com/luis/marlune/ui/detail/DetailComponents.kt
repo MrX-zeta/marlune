@@ -1,9 +1,5 @@
 package com.luis.marlune.ui.detail
 
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animate
-import androidx.compose.animation.core.spring
-import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,26 +26,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
-import com.luis.marlune.ui.components.rememberHapticTick
-import com.luis.marlune.ui.theme.LocalReducedMotion
-import kotlinx.coroutines.launch
+import com.luis.marlune.ui.components.StaggeredReveal
+import com.luis.marlune.ui.components.rememberDragReorderState
+import com.luis.marlune.ui.components.reorderableItem
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
@@ -136,53 +127,15 @@ fun EntryList(
 ) {
     var addTarget by remember { mutableStateOf<Long?>(null) }
     val reorderable = onReorder != null
-    val reducedMotion = LocalReducedMotion.current
-    val hapticTick = rememberHapticTick()
-    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val reorderState = rememberDragReorderState(listState)
 
     // Orden local durante el arrastre (optimista); se re-sincroniza con `entries` cuando NO se arrastra.
     val items = remember { entries.toMutableStateList() }
-    var draggedKey by remember { mutableStateOf<Long?>(null) }
-    var dragOffsetY by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(entries) {
-        if (draggedKey == null) {
+        if (reorderState.draggedKey == null) {
             items.clear()
             items.addAll(entries)
-        }
-    }
-
-    // Mueve la fila arrastrada y, al cruzar otra, la intercambia en `items`; el desfase se compensa para
-    // que la fila no salte (las demás se acomodan con `animateItem`).
-    val onDragMove: (Float) -> Unit = onDragMove@{ deltaY ->
-        dragOffsetY += deltaY
-        val key = draggedKey ?: return@onDragMove
-        val fromInfo = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key } ?: return@onDragMove
-        val draggedCenter = fromInfo.offset + fromInfo.size / 2 + dragOffsetY
-        val target = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
-            info.key != key && info.key is Long &&
-                draggedCenter.toInt() in info.offset until (info.offset + info.size)
-        } ?: return@onDragMove
-        val from = items.indexOfFirst { it.id == key }
-        val to = items.indexOfFirst { it.id == (target.key as Long) }
-        if (from in items.indices && to in items.indices && from != to) {
-            items.add(to, items.removeAt(from))
-            dragOffsetY += (fromInfo.offset - target.offset)
-        }
-    }
-    val finishDrag: () -> Unit = {
-        onReorder?.invoke(items.map { it.id }) // persiste el nuevo orden (no toca la cola en curso)
-        hapticTick()
-        val settleFrom = dragOffsetY
-        scope.launch {
-            if (reducedMotion) {
-                dragOffsetY = 0f
-            } else {
-                animate(settleFrom, 0f, animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium)) { v, _ ->
-                    dragOffsetY = v
-                }
-            }
-            draggedKey = null
         }
     }
 
@@ -204,33 +157,20 @@ fun EntryList(
                     add(ContextMenuItem(R.string.menu_remove_from_playlist) { onRemoveFromPlaylist(entry.id) })
                 }
             }
-            val isDragged = reorderable && entry.id == draggedKey
-            val rowModifier = Modifier
-                .then(if (isDragged) Modifier.zIndex(1f) else Modifier)
-                .then(if (reorderable && !reducedMotion && !isDragged) Modifier.animateItem() else Modifier)
-                .graphicsLayer {
-                    if (isDragged) {
-                        translationY = dragOffsetY
-                        scaleX = DragScale
-                        scaleY = DragScale
-                        shadowElevation = DragElevation.toPx()
-                    }
-                }
-                .then(
-                    if (reorderable) {
-                        Modifier.pointerInput(entry.id) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = { draggedKey = entry.id; dragOffsetY = 0f; hapticTick() },
-                                onDragEnd = finishDrag,
-                                onDragCancel = finishDrag,
-                                onDrag = { change, drag -> change.consume(); onDragMove(drag.y) },
-                            )
-                        }
-                    } else {
-                        Modifier
-                    },
+            val rowModifier = if (reorderable) {
+                // Al soltar persiste el ORDEN completo en Room (no toca la cola en curso).
+                reorderableItem(
+                    state = reorderState,
+                    item = entry,
+                    items = items,
+                    keyOf = { it.id },
+                    enabled = true,
+                    onSettle = { _, _, _ -> onReorder?.invoke(items.map { it.id }) },
                 )
-            com.luis.marlune.ui.components.StaggeredReveal(
+            } else {
+                Modifier
+            }
+            StaggeredReveal(
                 index = index,
                 enabled = !reorderable && index < StaggerVisibleCount,
                 modifier = rowModifier,
@@ -252,9 +192,6 @@ fun EntryList(
         AddToPlaylistSheet(songId = songId, onDismiss = { addTarget = null })
     }
 }
-
-private const val DragScale = 1.03f
-private val DragElevation = 8.dp
 
 /**
  * Cabecera de detalle (lista/álbum/artista): mosaico grande + nombre + conteo + acciones Reproducir /

@@ -292,6 +292,7 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     onCloseQueue = { showQueue = false },
                     onJumpToQueueItem = playerViewModel::playQueueItem,
                     onRemoveQueueItem = playerViewModel::removeQueueItem,
+                    onMoveQueueItem = playerViewModel::moveQueueItem,
                     artModifier = artModifier,
                     titleModifier = titleModifier,
                     artistModifier = artistModifier,
