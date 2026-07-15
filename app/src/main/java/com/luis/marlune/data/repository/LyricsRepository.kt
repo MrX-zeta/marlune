@@ -29,11 +29,12 @@ import java.util.concurrent.ConcurrentHashMap
 /** Resultado de conceder una carpeta en el contexto de una canción. */
 enum class AddFolderResult { ADDED, WRONG_FOLDER }
 
-/** Resultado de resolver la letra (local o red): encontrada, no encontrada, o error de red. */
+/** Resultado de resolver la letra (local o red): encontrada, no encontrada, sin conexión, o error. */
 sealed interface LyricsResolution {
     data class Found(val lyrics: Lyrics) : LyricsResolution
     data object NotFound : LyricsResolution
-    data object NetworkError : LyricsResolution
+    data object NoConnection : LyricsResolution
+    data object ServiceError : LyricsResolution
 }
 
 /**
@@ -87,18 +88,30 @@ class LyricsRepository(
         networkCache.get(song.id)?.let { return@withContext LyricsResolution.Found(it) }
         // A partir de aquí SÍ es una petición nueva: solo si el ajuste opt-in está encendido.
         if (!allowNetwork) return@withContext LyricsResolution.NotFound
+        Log.d(LYRICS_TAG, "resolve -> pidiendo a LRCLIB '${song.title}' / '${song.artist}'")
         when (val r = lrcLibClient.fetch(song.title, song.artist, song.album, song.durationMs / 1000)) {
             is LrcLibResult.Found -> {
                 networkCache.put(song.id, r.lyrics.syncedLyrics, r.lyrics.plainLyrics)
-                toLyrics(r.lyrics)?.let { LyricsResolution.Found(it) } ?: LyricsResolution.NotFound
+                val parsed = toLyrics(r.lyrics)
+                val mode = when {
+                    parsed?.synced == true -> "SINCRONIZADO"
+                    parsed != null -> "PLANO"
+                    else -> "ninguno"
+                }
+                Log.d(LYRICS_TAG, "LRCLIB modo=$mode (respuesta syncedLyrics=${r.lyrics.syncedLyrics != null}, plainLyrics=${r.lyrics.plainLyrics != null})")
+                parsed?.let { LyricsResolution.Found(it) } ?: LyricsResolution.NotFound
             }
             LrcLibResult.NotFound -> LyricsResolution.NotFound
-            LrcLibResult.NetworkError -> LyricsResolution.NetworkError
+            LrcLibResult.NoConnection -> LyricsResolution.NoConnection
+            LrcLibResult.ServiceError -> LyricsResolution.ServiceError
         }
     }
 
     /** Borra la caché de letras descargadas (Ajustes). */
-    fun clearNetworkCache() = networkCache.clear()
+    fun clearNetworkCache() {
+        Log.d(LYRICS_TAG, "borrar caché de letras (disco privado)")
+        networkCache.clear()
+    }
 
     private fun toLyrics(l: LrcLibLyrics): Lyrics? {
         l.syncedLyrics?.let { s -> LrcParser.parse(s)?.let { return it } }

@@ -78,7 +78,9 @@ fun LyricsView(
     ) {
         when (state) {
             LyricsUiState.Loading -> CenteredNote(stringResource(R.string.lyrics_loading))
-            LyricsUiState.Error -> CenteredNote(stringResource(R.string.lyrics_network_error))
+            is LyricsUiState.Error -> CenteredNote(
+                stringResource(if (state.offline) R.string.lyrics_no_connection else R.string.lyrics_service_error),
+            )
             is LyricsUiState.None -> EmptyLyrics(state.request, folderError, internetEnabled, onGrantAccess, onSearchOnline)
             is LyricsUiState.Plain -> PlainLyrics(state.lines)
             is LyricsUiState.Synced -> SyncedLyrics(state.lines, state.activeIndex, reducedMotion)

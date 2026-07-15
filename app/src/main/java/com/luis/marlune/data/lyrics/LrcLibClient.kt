@@ -1,6 +1,7 @@
 package com.luis.marlune.data.lyrics
 
 import android.net.Uri
+import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -10,11 +11,16 @@ import kotlin.math.abs
 /** Resultado crudo de LRCLIB: LRC sincronizado y/o texto plano (cualquiera puede faltar). */
 data class LrcLibLyrics(val syncedLyrics: String?, val plainLyrics: String?)
 
-/** Estado de la búsqueda en red, para distinguir "no encontrada" de "sin conexión/error". */
+/**
+ * Estado de la búsqueda en red. Diferencia "no encontrada" de fallos, y dentro de los fallos separa
+ * "sin conexión" (no hay red) de "error del servicio" (la petición respondió mal o falló por otra
+ * causa), para poder mostrar el mensaje correcto.
+ */
 sealed interface LrcLibResult {
     data class Found(val lyrics: LrcLibLyrics) : LrcLibResult
     data object NotFound : LrcLibResult
-    data object NetworkError : LrcLibResult
+    data object NoConnection : LrcLibResult
+    data object ServiceError : LrcLibResult
 }
 
 /**
@@ -36,24 +42,54 @@ class LrcLibClient {
     ): LrcLibResult {
         if (title.isBlank() || artist.isBlank()) return LrcLibResult.NotFound
 
+        Log.d(TAG, "LRCLIB enviado: track='$title' artist='$artist' album='$album' dur=$durationSec")
         val getUrl = "$BASE/get?" + query(
             "track_name" to title,
             "artist_name" to artist,
             "album_name" to album,
             "duration" to durationSec.takeIf { it > 0 }?.toString().orEmpty(),
         )
-        when (val direct = request(getUrl) { parseObject(it) }) {
+        val direct = request(getUrl) { parseObject(it) }
+        Log.d(TAG, "  /get -> ${describe(direct)}")
+        when (direct) {
             is LrcLibResult.Found -> return direct
-            LrcLibResult.NetworkError -> return LrcLibResult.NetworkError
+            LrcLibResult.NoConnection -> return LrcLibResult.NoConnection
+            LrcLibResult.ServiceError -> return LrcLibResult.ServiceError
             LrcLibResult.NotFound -> Unit // sigue al search
         }
 
         val searchUrl = "$BASE/search?" + query("track_name" to title, "artist_name" to artist)
-        return request(searchUrl) { body -> parseSearch(body, durationSec) }
+        val search = request(searchUrl) { body -> parseSearch(body, durationSec) }
+        Log.d(TAG, "  /search -> ${describe(search)}")
+        return search
     }
 
-    /** Ejecuta la petición y mapea el cuerpo con [parse]; distingue 404 (NotFound) de error de red. */
+    private fun describe(r: LrcLibResult): String = when (r) {
+        is LrcLibResult.Found -> "Found(synced=${r.lyrics.syncedLyrics != null}, plain=${r.lyrics.plainLyrics != null})"
+        LrcLibResult.NotFound -> "NotFound"
+        LrcLibResult.NoConnection -> "NoConnection"
+        LrcLibResult.ServiceError -> "ServiceError"
+    }
+
+    /**
+     * Ejecuta la petición con UN reintento ante fallo transitorio de conexión: la 1ª petición tras
+     * activar el ajuste fallaba ("sin conexión") por DNS/handshake en frío y la 2ª funcionaba. Solo se
+     * reintenta [LrcLibResult.NoConnection] (fallo de conexión); éxito, 404 o error del servicio no.
+     */
     private fun request(url: String, parse: (String) -> LrcLibResult): LrcLibResult {
+        var result: LrcLibResult = LrcLibResult.NoConnection
+        repeat(MAX_ATTEMPTS) { attempt ->
+            result = requestOnce(url, parse)
+            if (result !is LrcLibResult.NoConnection) return result
+            if (attempt < MAX_ATTEMPTS - 1) {
+                Log.d(TAG, "  reintento tras fallo transitorio de conexión")
+                runCatching { Thread.sleep(RETRY_DELAY_MS) }
+            }
+        }
+        return result
+    }
+
+    private fun requestOnce(url: String, parse: (String) -> LrcLibResult): LrcLibResult {
         var conn: HttpURLConnection? = null
         return try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -63,13 +99,27 @@ class LrcLibClient {
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
             }
-            when (val code = conn.responseCode) {
-                in 200..299 -> parse(conn.inputStream.bufferedReader().use { it.readText() })
-                404 -> LrcLibResult.NotFound
-                else -> if (code >= 500) LrcLibResult.NetworkError else LrcLibResult.NotFound
+            val code = conn.responseCode
+            Log.d(TAG, "  HTTP $code $url")
+            when {
+                code in 200..299 -> parse(conn.inputStream.bufferedReader().use { it.readText() })
+                code == 404 -> LrcLibResult.NotFound
+                code >= 500 -> LrcLibResult.ServiceError
+                else -> LrcLibResult.NotFound
             }
-        } catch (_: Exception) {
-            LrcLibResult.NetworkError // timeout / sin conexión / host no resuelto
+        } catch (e: java.util.concurrent.CancellationException) {
+            throw e // NO tragarse la cancelación de corrutina (rompería la estructura de concurrencia)
+        } catch (e: Exception) {
+            Log.d(TAG, "  EXCEPCIÓN ${e.javaClass.simpleName}: ${e.message}")
+            if (e is java.net.UnknownHostException ||
+                e is java.net.ConnectException ||
+                e is java.net.SocketTimeoutException ||
+                e is java.net.NoRouteToHostException
+            ) {
+                LrcLibResult.NoConnection // no hay red / DNS / timeout
+            } else {
+                LrcLibResult.ServiceError // otra causa (respuesta corrupta, etc.)
+            }
         } finally {
             conn?.disconnect()
         }
@@ -109,6 +159,9 @@ class LrcLibClient {
     private companion object {
         const val BASE = "https://lrclib.net/api"
         const val TIMEOUT_MS = 6_000
+        const val MAX_ATTEMPTS = 2 // 1 intento + 1 reintento ante fallo transitorio de conexión
+        const val RETRY_DELAY_MS = 500L
         const val USER_AGENT = "Marlune/1.0 (reproductor de musica local; https://github.com/luis/marlune)"
+        const val TAG = "MarluneLyrics"
     }
 }

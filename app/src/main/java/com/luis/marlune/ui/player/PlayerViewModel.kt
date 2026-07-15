@@ -99,7 +99,8 @@ class PlayerViewModel(
                 res is LyricsResolution.Found && res.lyrics.synced ->
                     LyricsUiState.Synced(res.lyrics.lines, activeIndex(res.lyrics.lines, state.positionMs))
                 res is LyricsResolution.Found -> LyricsUiState.Plain(res.lyrics.lines.map { it.text })
-                res is LyricsResolution.NetworkError -> LyricsUiState.Error
+                res is LyricsResolution.NoConnection -> LyricsUiState.Error(offline = true)
+                res is LyricsResolution.ServiceError -> LyricsUiState.Error(offline = false)
                 else -> LyricsUiState.None(request = load.request)
             }
         }.distinctUntilChanged()

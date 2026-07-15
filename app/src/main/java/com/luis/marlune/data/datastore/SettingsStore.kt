@@ -1,6 +1,7 @@
 package com.luis.marlune.data.datastore
 
 import android.content.Context
+import android.util.Log
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.preferencesDataStore
@@ -21,6 +22,7 @@ class SettingsStore(context: Context) {
     val internetLyrics: Flow<Boolean> = dataStore.data.map { it[Keys.INTERNET_LYRICS] ?: false }
 
     suspend fun setInternetLyrics(enabled: Boolean) {
+        Log.d("MarluneLyrics", "ajuste internet_lyrics = $enabled")
         dataStore.edit { it[Keys.INTERNET_LYRICS] = enabled }
     }
 

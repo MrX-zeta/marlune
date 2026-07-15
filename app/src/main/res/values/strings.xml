@@ -56,7 +56,8 @@
     <string name="lyrics_need_access">Marlune necesita acceso a la carpeta «%1$s» para leer sus letras</string>
     <string name="lyrics_grant">Conceder acceso</string>
     <string name="lyrics_wrong_folder">Esa carpeta no contiene esta canción. Inténtalo de nuevo.</string>
-    <string name="lyrics_network_error">Sin conexión. No se pudo buscar la letra.</string>
+    <string name="lyrics_no_connection">Sin conexión. No se pudo buscar la letra.</string>
+    <string name="lyrics_service_error">No se pudo obtener la letra ahora mismo.</string>
     <string name="lyrics_search_online">Buscar letras en internet</string>
     <string name="settings_title">Ajustes</string>
     <string name="settings_lyrics_section">Letras</string>

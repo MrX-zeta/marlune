@@ -11,8 +11,11 @@ sealed interface LyricsUiState {
     /** Resolviendo la letra de la pista actual (IO, incluida la posible búsqueda en red). */
     data object Loading : LyricsUiState
 
-    /** La búsqueda en red falló (sin conexión / error). Mensaje breve, sin alarmas. */
-    data object Error : LyricsUiState
+    /**
+     * La búsqueda en red falló. [offline] = no hay conexión; `false` = error del servicio. Mensaje
+     * breve y distinto según el caso; nunca se confunde con "no encontrada" (que es [None]).
+     */
+    data class Error(val offline: Boolean) : LyricsUiState
 
     /**
      * No hay letra. Si [request] no es null, la carpeta de esta canción aún no tiene acceso y se
