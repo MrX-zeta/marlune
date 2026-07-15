@@ -41,27 +41,52 @@ class MarluneAccentController(initial: Color = MarluneAccent) {
     }
 }
 
+// Por debajo de esta saturación real, la carátula es efectivamente monocroma (gris/blanco/negro):
+// su hue no significa nada, así que NO se inventa color (se cae al acento de marca).
+private const val MonochromeSaturation = 0.15f
+// Mezcla ligera del color extraído con la marca para que todo mantenga aire "Marlune" y no salten
+// tonos chillones.
+private const val BrandBlend = 0.18f
+
 /**
  * Elige un swatch expresivo de la carátula y lo normaliza para un fondo oscuro:
  * garantiza saturación y luminosidad suficientes para leerse como acento sobre `#0A0910`.
- * Devuelve `null` si Palette no encuentra nada usable (el llamador cae al acento base).
+ *
+ * Usa los filtros por defecto de Palette (descartan casi-negros y casi-blancos), y SOLO devuelve un
+ * color si el swatch elegido tiene saturación real: una carátula en blanco y negro o blanca da un
+ * swatch gris (saturación ~0, hue basura) → `null`, para que el llamador use el acento de marca en
+ * vez de forzar saturación sobre un hue sin sentido (lo que producía rojos/amarillos inventados).
  */
 private fun accentFromBitmap(bitmap: Bitmap): Color? {
-    val palette = Palette.from(bitmap).clearFilters().generate()
+    val palette = Palette.from(bitmap).generate() // filtros por defecto: sin near-black/near-white
     val swatch = palette.vibrantSwatch
+        ?: palette.darkVibrantSwatch
         ?: palette.lightVibrantSwatch
+        ?: palette.mutedSwatch
+        ?: palette.darkMutedSwatch
+        ?: palette.lightMutedSwatch
         ?: palette.dominantSwatch
         ?: return null
+
+    val hsl = FloatArray(3)
+    ColorUtils.colorToHSL(swatch.rgb, hsl)
+    if (hsl[1] < MonochromeSaturation) return null // carátula monocroma → acento de marca
+
     return normalizeForDark(Color(swatch.rgb))
 }
 
-/** Sube saturación/luminosidad mínimas para que cualquier carátula rinda como acento. */
+/**
+ * Sube saturación/luminosidad mínimas para que un color con saturación REAL rinda como acento sobre
+ * el neutro oscuro, y lo mezcla un poco con la marca para mantener la coherencia. NO se llama con
+ * colores monocromos (esos se filtran antes, en [accentFromBitmap]).
+ */
 private fun normalizeForDark(color: Color): Color {
     val hsl = FloatArray(3)
     ColorUtils.colorToHSL(color.toArgb(), hsl)
     hsl[1] = hsl[1].coerceAtLeast(0.45f) // saturación
     hsl[2] = hsl[2].coerceIn(0.62f, 0.78f) // luminosidad legible sobre neutro oscuro
-    return Color(ColorUtils.HSLToColor(hsl))
+    val normalized = ColorUtils.HSLToColor(hsl)
+    return Color(ColorUtils.blendARGB(normalized, MarluneAccent.toArgb(), BrandBlend))
 }
 
 /**
