@@ -20,17 +20,25 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import com.luis.marlune.R
+import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -156,6 +164,29 @@ fun MarluneApp(modifier: Modifier = Modifier) {
     // contenido (NavHost) no se recompone por el playback (el mini-player sí, donde se usa).
     val expandPlayer = remember { { playerExpanded = true } }
 
+    // Apertura de la hoja de cola hoisteada aquí para poder abrirla desde el snackbar de "Añadir a la
+    // cola" (que vive en Biblioteca, otra pantalla): abrirla expande el reproductor y muestra la hoja.
+    var showQueue by rememberSaveable { mutableStateOf(false) }
+    val openQueue: () -> Unit = {
+        playerExpanded = true
+        showQueue = true
+    }
+    // Snackbar a nivel de app: "Añadida a la cola" + acción "Ver". Se permite duplicar (es una cola).
+    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarScope = rememberCoroutineScope()
+    val queuedMessage = stringResource(R.string.library_queued)
+    val viewLabel = stringResource(R.string.action_view)
+    val onSongQueued: () -> Unit = {
+        snackbarScope.launch {
+            val result = snackbarHostState.showSnackbar(
+                message = queuedMessage,
+                actionLabel = viewLabel,
+                duration = SnackbarDuration.Short,
+            )
+            if (result == SnackbarResult.ActionPerformed) openQueue()
+        }
+    }
+
     // Haptics en un solo punto: solo play/pausa y cambio de pista, nunca en scroll.
     val hapticTick = rememberHapticTick()
     val dispatchPlayer: (PlayerEvent) -> Unit = { event ->
@@ -232,6 +263,9 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                         navController.navigate(Routes.SETTINGS)
                     },
                     queue = queueState,
+                    showQueue = showQueue,
+                    onOpenQueue = { showQueue = true },
+                    onCloseQueue = { showQueue = false },
                     onJumpToQueueItem = playerViewModel::playQueueItem,
                     onRemoveQueueItem = playerViewModel::removeQueueItem,
                     artModifier = artModifier,
@@ -243,6 +277,8 @@ fun MarluneApp(modifier: Modifier = Modifier) {
                     navController = navController,
                     reducedMotion = reducedMotion,
                     playerState = playerState,
+                    snackbarHostState = snackbarHostState,
+                    onSongQueued = onSongQueued,
                     onExpandPlayer = expandPlayer,
                     onMiniPlayPause = { dispatchPlayer(PlayerEvent.PlayPause) },
                     onMiniNext = { dispatchPlayer(PlayerEvent.Next) },
@@ -263,6 +299,8 @@ private fun MarluneShell(
     navController: NavHostController,
     reducedMotion: Boolean,
     playerState: com.luis.marlune.ui.player.PlayerUiState,
+    snackbarHostState: SnackbarHostState,
+    onSongQueued: () -> Unit,
     onExpandPlayer: () -> Unit,
     onMiniPlayPause: () -> Unit,
     onMiniNext: () -> Unit,
@@ -273,6 +311,7 @@ private fun MarluneShell(
 ) {
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
             Column {
                 // Mini-player solo cuando hay pista real: en vacío se OCULTA (nada de canción falsa)
@@ -311,6 +350,7 @@ private fun MarluneShell(
         MarluneNavHost(
             navController = navController,
             contentPadding = innerPadding,
+            onSongQueued = onSongQueued,
         )
     }
 }
@@ -329,6 +369,7 @@ private fun NavHostController.navigateToTab(destination: MarluneDestination) {
 private fun MarluneNavHost(
     navController: NavHostController,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
+    onSongQueued: () -> Unit,
 ) {
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
@@ -348,6 +389,7 @@ private fun MarluneNavHost(
                 onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
                 onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
                 onOpenPlaylist = { id -> navController.navigate(Routes.playlist(id)) },
+                onSongQueued = onSongQueued,
                 contentPadding = contentPadding,
             )
         }

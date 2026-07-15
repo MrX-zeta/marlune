@@ -72,6 +72,7 @@ fun LibraryRoute(
     onOpenAlbum: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
     onOpenPlaylist: (Long) -> Unit,
+    onSongQueued: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
     viewModel: LibraryViewModel = viewModel(
@@ -98,6 +99,7 @@ fun LibraryRoute(
         // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
         onPlaySong = viewModel::playSongEntry,
         onAddToQueue = viewModel::addSongToQueue,
+        onSongQueued = onSongQueued,
         onBeginDelete = viewModel::beginDelete,
         onSongDeleted = viewModel::onSongDeleted,
         onCompleteDelete = viewModel::completeDelete,
@@ -131,6 +133,7 @@ fun LibraryScreen(
     onRefresh: () -> Unit,
     onPlaySong: (Long) -> Unit,
     onAddToQueue: (Long) -> Unit,
+    onSongQueued: () -> Unit,
     onBeginDelete: (Long) -> DeleteOutcome,
     onSongDeleted: (Long) -> Unit,
     onCompleteDelete: (Long) -> Unit,
@@ -225,6 +228,7 @@ fun LibraryScreen(
                         bottomPadding = listBottomPadding,
                         onEntryClick = onEntryClick,
                         onAddToQueue = onAddToQueue,
+                        onSongQueued = onSongQueued,
                         onBeginDelete = onBeginDelete,
                         onSongDeleted = onSongDeleted,
                         onCompleteDelete = onCompleteDelete,
@@ -245,6 +249,7 @@ private fun LibraryList(
     bottomPadding: Dp,
     onEntryClick: (LibraryEntry) -> Unit,
     onAddToQueue: (Long) -> Unit,
+    onSongQueued: () -> Unit,
     onBeginDelete: (Long) -> DeleteOutcome,
     onSongDeleted: (Long) -> Unit,
     onCompleteDelete: (Long) -> Unit,
@@ -309,11 +314,7 @@ private fun LibraryList(
                                 onPlay = { onEntryClick(entry) },
                                 onQueue = {
                                     onAddToQueue(entry.id)
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.library_queued),
-                                        Toast.LENGTH_SHORT,
-                                    ).show()
+                                    onSongQueued() // snackbar app-level "Añadida a la cola" + "Ver"
                                 },
                                 onAddToPlaylist = { addTarget = entry.id },
                                 onDelete = { deleteTarget = entry },
@@ -459,6 +460,7 @@ private fun LibraryScreenPreview() {
             onRefresh = {},
             onPlaySong = {},
             onAddToQueue = {},
+            onSongQueued = {},
             onBeginDelete = { DeleteOutcome.Failed },
             onSongDeleted = {},
             onCompleteDelete = {},

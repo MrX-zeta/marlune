@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -24,7 +25,10 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,7 +64,10 @@ fun QueueSheet(
     onRemove: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    // Hoja SOBREPUESTA: abre a media altura (arranca en PartiallyExpanded) y se puede subir a completa
+    // o bajar para cerrar; el reproductor sigue visible tras el scrim. El contenido se dimensiona alto
+    // para que el punto parcial sea ~media pantalla y quede recorrido al arrastrar hacia arriba.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val current = queue.items.getOrNull(queue.currentIndex)
     // Solo lo que VIENE (índice REAL > actual); el historial no se muestra. Se separan los añadidos a
     // mano (sección manual) del resto (contexto); un manual sale de su sección al pasar a ser la actual.
@@ -69,6 +76,9 @@ fun QueueSheet(
     }
     val manualUpcoming = upcoming.filter { (_, item) -> item.manual }
     val contextUpcoming = upcoming.filterNot { (_, item) -> item.manual }
+    // El contexto se ASOMA (unas pocas) y "Ver todo" expande el resto en la misma hoja.
+    var showAllContext by remember { mutableStateOf(false) }
+    val contextShown = if (showAllContext) contextUpcoming else contextUpcoming.take(ContextPreviewCount)
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -77,7 +87,7 @@ fun QueueSheet(
         dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
         LazyColumn(
-            modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(SheetHeightFraction).navigationBarsPadding(),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
             if (current == null) {
@@ -92,7 +102,7 @@ fun QueueSheet(
                 return@LazyColumn
             }
 
-            // Fila 1: la pista actual (resaltada, con ecualizador, sin ✕).
+            // Fila 1: la pista actual (resaltada, con ecualizador, sin ✕). Sin encabezado propio.
             item(key = "cur:${queue.currentIndex}:${current.mediaId}", contentType = "queueRow") {
                 QueueRow(
                     item = current,
@@ -121,13 +131,13 @@ fun QueueSheet(
                 }
             }
 
-            // Sección "A continuación de: <origen>": el resto de lo que viene por contexto.
+            // Contexto: encabezado discreto + solo las próximas; "Ver todo" expande el resto aquí mismo.
             if (contextUpcoming.isNotEmpty()) {
                 item(key = "hdr-context") {
                     QueueSectionHeader(stringResource(R.string.queue_section_from, source))
                 }
                 items(
-                    contextUpcoming,
+                    contextShown,
                     key = { (index, item) -> "c:$index:${item.mediaId}" },
                     contentType = { _ -> "queueRow" },
                 ) { (index, item) ->
@@ -139,20 +149,42 @@ fun QueueSheet(
                         onRemove = { onRemove(index) },
                     )
                 }
+                if (!showAllContext && contextUpcoming.size > ContextPreviewCount) {
+                    item(key = "see-all") { SeeAllRow(onClick = { showAllContext = true }) }
+                }
             }
         }
     }
 }
 
+// ~90% de alto para que el punto parcial de la hoja sea media pantalla y quede recorrido al subir.
+private const val SheetHeightFraction = 0.9f
+// Cuántas del contexto se "asoman" antes de "Ver todo".
+private const val ContextPreviewCount = 4
+
+@Composable
+private fun SeeAllRow(onClick: () -> Unit) {
+    Text(
+        text = stringResource(R.string.queue_see_all),
+        style = MarluneTheme.typography.labelLarge,
+        color = MarluneTheme.colors.accent,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 20.dp, vertical = 12.dp),
+    )
+}
+
+/** Encabezado "susurro": tipografía pequeña, texto terciario, sin negrita ni divisores. */
 @Composable
 private fun QueueSectionHeader(text: String) {
     Text(
         text = text,
-        style = MarluneTheme.typography.labelLarge,
-        color = MarluneTheme.colors.textSecondary,
+        style = MarluneTheme.typography.labelMedium,
+        color = MarluneTheme.colors.textTertiary,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 6.dp),
     )
 }
 

@@ -88,6 +88,9 @@ fun PlayerScreen(
     onLyricsFolderPicked: (Uri) -> Unit,
     onOpenSettings: () -> Unit,
     queue: QueueUiState,
+    showQueue: Boolean,
+    onOpenQueue: () -> Unit,
+    onCloseQueue: () -> Unit,
     onJumpToQueueItem: (Int) -> Unit,
     onRemoveQueueItem: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -109,8 +112,6 @@ fun PlayerScreen(
 
     // Carátula ↔ letras: un tap sobre la carátula alterna (lo resuelve el detector de AlbumArt).
     var showLyrics by remember { mutableStateOf(false) }
-    // Panel "A continuación": se abre desde la barra superior, sin minimizar Now Playing.
-    var showQueue by remember { mutableStateOf(false) }
     // Pick de carpeta SAF para leer .lrc (permiso por árbol, persistente). Solo desde el vacío.
     val folderLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree(),
@@ -217,7 +218,7 @@ fun PlayerScreen(
             PlayerTopBar(
                 source = uiState.source,
                 onMinimize = { showLyrics = false; onMinimize() },
-                onOpenQueue = { showQueue = true },
+                onOpenQueue = onOpenQueue,
                 modifier = chrome,
             )
 
@@ -304,9 +305,10 @@ fun PlayerScreen(
         if (showQueue) {
             QueueSheet(
                 queue = queue,
+                source = uiState.source,
                 onJumpTo = onJumpToQueueItem,
                 onRemove = onRemoveQueueItem,
-                onDismiss = { showQueue = false },
+                onDismiss = onCloseQueue,
             )
         }
     }
@@ -496,6 +498,9 @@ private fun PlayerScreenPlayingPreview() {
             onLyricsFolderPicked = {},
             onOpenSettings = {},
             queue = QueueUiState.Empty,
+            showQueue = false,
+            onOpenQueue = {},
+            onCloseQueue = {},
             onJumpToQueueItem = {},
             onRemoveQueueItem = {},
         )
@@ -516,6 +521,9 @@ private fun PlayerScreenPausedPreview() {
             onLyricsFolderPicked = {},
             onOpenSettings = {},
             queue = QueueUiState.Empty,
+            showQueue = false,
+            onOpenQueue = {},
+            onCloseQueue = {},
             onJumpToQueueItem = {},
             onRemoveQueueItem = {},
         )
