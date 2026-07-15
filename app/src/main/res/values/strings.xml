@@ -28,7 +28,7 @@
     <string name="menu_add_to_playlist">Añadir a lista</string>
     <string name="menu_remove_from_playlist">Quitar de la lista</string>
     <string name="add_to_playlist_title">Añadir a lista</string>
-    <string name="playlist_new_option">+ Nueva lista</string>
+    <string name="playlist_new_option">Nueva lista</string>
     <string name="playlist_song_added">Añadida a %1$s</string>
     <string name="playlist_song_exists">Ya está en la lista</string>
     <string name="action_create">Crear</string>
