@@ -64,9 +64,11 @@ private val ArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSi
 private val LargeTitleStyle = TextStyle(color = ColorProvider(TextPrimary), fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
 private val LargeArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSize = 13.sp, fontWeight = FontWeight.Normal, textAlign = TextAlign.Center)
 
-/** Altura (real) desde la que se muestra el layout medio (B) y, más arriba, el grande (C). */
+// Umbrales por ALTURA real (SizeMode.Exact): <110 compacto (4x1, horizontal) · 110–180 medio (4x2,
+// horizontal) · >=180 grande (4x3+/casi cuadrado, vertical). Subido a 180 para que un 4x2 alto NO
+// caiga en el vertical: el 4x2 se queda horizontal y solo el grande/máximo usa el vertical centrado.
 private val FullThreshold = 110.dp
-private val LargeThreshold = 150.dp
+private val LargeThreshold = 180.dp
 
 /** Padding horizontal del contenido completo (por lado). También el margen mínimo controles↔borde. */
 private const val FULL_HPAD = 12f
