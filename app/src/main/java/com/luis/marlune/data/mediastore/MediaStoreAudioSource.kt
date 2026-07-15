@@ -5,6 +5,7 @@ import android.content.Context
 import android.database.ContentObserver
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
@@ -100,19 +101,22 @@ class MediaStoreAudioSource(context: Context) {
     fun querySongs(): List<Song> {
         val genres = runCatching { queryGenres() }.getOrDefault(emptyMap())
 
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.ARTIST_ID,
-            MediaStore.Audio.Media.ALBUM,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.TRACK,
-            MediaStore.Audio.Media.YEAR,
-            MediaStore.Audio.Media.DATE_ADDED,
-            MediaStore.Audio.Media.DISPLAY_NAME,
-        )
+        // RELATIVE_PATH existe en API 29+ (Q); en API 28 se omite de la proyección (evita crash).
+        val hasRelativePath = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+        val projection = buildList {
+            add(MediaStore.Audio.Media._ID)
+            add(MediaStore.Audio.Media.TITLE)
+            add(MediaStore.Audio.Media.ARTIST)
+            add(MediaStore.Audio.Media.ARTIST_ID)
+            add(MediaStore.Audio.Media.ALBUM)
+            add(MediaStore.Audio.Media.ALBUM_ID)
+            add(MediaStore.Audio.Media.DURATION)
+            add(MediaStore.Audio.Media.TRACK)
+            add(MediaStore.Audio.Media.YEAR)
+            add(MediaStore.Audio.Media.DATE_ADDED)
+            add(MediaStore.Audio.Media.DISPLAY_NAME)
+            if (hasRelativePath) add(MediaStore.Audio.Media.RELATIVE_PATH)
+        }.toTypedArray()
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
 
@@ -129,6 +133,11 @@ class MediaStoreAudioSource(context: Context) {
             val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val displayNameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
+            val relativePathCol = if (hasRelativePath) {
+                cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+            } else {
+                -1
+            }
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
@@ -146,6 +155,7 @@ class MediaStoreAudioSource(context: Context) {
                     genre = genres[id],
                     dateAdded = cursor.getLong(dateAddedCol),
                     displayName = cursor.getString(displayNameCol).orEmpty(),
+                    relativePath = if (relativePathCol >= 0) cursor.getString(relativePathCol).orEmpty() else "",
                     contentUri = ContentUris.withAppendedId(audioCollection, id),
                     artworkUri = ContentUris.withAppendedId(albumArtCollection, albumId),
                 )

@@ -54,6 +54,7 @@ data class HomeUiState(
             genre = null,
             dateAdded = id,
             displayName = "$title.mp3",
+            relativePath = "Music/",
             contentUri = Uri.EMPTY,
             artworkUri = null,
         )

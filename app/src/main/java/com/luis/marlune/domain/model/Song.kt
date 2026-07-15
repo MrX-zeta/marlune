@@ -24,6 +24,11 @@ data class Song(
     val dateAdded: Long,
     /** `DISPLAY_NAME` de MediaStore (nombre de archivo, p. ej. "cancion.mp3"). Casa el `.lrc` sidecar. */
     val displayName: String,
+    /**
+     * `RELATIVE_PATH` de MediaStore (carpeta relativa al volumen, p. ej. "Download/SnapTube Audio/").
+     * Deduce la carpeta de la canción para preseleccionarla al pedir acceso SAF. Vacío en API < 29.
+     */
+    val relativePath: String,
     val contentUri: Uri,
     val artworkUri: Uri?,
 )
