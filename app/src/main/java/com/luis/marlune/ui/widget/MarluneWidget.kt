@@ -236,10 +236,10 @@ private fun TideBar(fraction: Float, innerWidthDp: Float) {
     if (USE_TIDE_BITMAP) {
         val context = LocalContext.current
         val density = context.resources.displayMetrics.density
-        val heightDp = 18f
+        val heightDp = 24f // igual que la marea de la app (deja hueco para el halo de 10 dp)
         val wPx = (innerWidthDp * density).toInt().coerceIn(2, 4000)
         val hPx = (heightDp * density).toInt().coerceAtLeast(2)
-        val bitmap: Bitmap = remember(fraction, wPx) { WidgetTide.render(wPx, hPx, fraction) }
+        val bitmap: Bitmap = remember(fraction, wPx) { WidgetTide.render(wPx, hPx, density, fraction) }
         Image(
             provider = ImageProvider(bitmap),
             contentDescription = null,
@@ -317,12 +317,14 @@ private fun ControlButton(
 }
 
 /**
- * Play/pausa NATIVO: círculo de acento (Box con background) y el símbolo como TEXTO nativo (no imagen),
- * para que su estado se refleje SIEMPRE en MIUI (el texto de Glance sí se repinta; las imágenes no).
- * Área táctil ~56 dp (control principal).
+ * Play/pausa: círculo de acento (#8E7DF0) con el icono Rounded (barras esbeltas y redondeadas para la
+ * pausa; triángulo redondeado para el play) en #0A0910. Se usan drawables RESOURCE (no bitmaps): al
+ * alternar cambia el resId, así `setImageViewResource` repinta bien en MIUI (el caché afecta a los
+ * bitmaps, no a un recurso distinto). El icono de play va algo mayor. Área táctil ~56 dp.
  */
 @Composable
 private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp) {
+    val context = LocalContext.current
     val circle = boxSize - 8.dp // deja un anillo táctil alrededor del círculo visible
     Box(
         modifier = GlanceModifier.size(boxSize).clickable(actionRunCallback<WidgetPlayPauseAction>()),
@@ -332,9 +334,11 @@ private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp) {
             modifier = GlanceModifier.size(circle).background(fixed(Accent)).cornerRadius(circle / 2),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = if (isPlaying) "❚❚" else "▶",
-                style = TextStyle(color = fixed(Bg), fontSize = 18.sp, fontWeight = FontWeight.Bold),
+            Image(
+                provider = ImageProvider(if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play),
+                contentDescription = context.getString(if (isPlaying) R.string.player_pause else R.string.player_play),
+                colorFilter = ColorFilter.tint(fixed(Bg)),
+                modifier = GlanceModifier.size(if (isPlaying) 24.dp else 28.dp),
             )
         }
     }

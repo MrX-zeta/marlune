@@ -8,90 +8,94 @@ import androidx.core.graphics.createBitmap
 import kotlin.math.sin
 
 /**
- * La MAREA del widget, pintada a mano en un [Bitmap] (Glance no tiene onda ni progreso). Réplica en
- * miniatura de la marea de la app: la parte reproducida es una onda de baja amplitud en aqua
- * (#6FD8C6), el resto una línea plana tenue (#3A3357), y el playhead un punto vivo (#A99BFF) en el
- * límite.
- *
- * TODO se dibuja en el MISMO lienzo y sistema de coordenadas. Se reserva un padding interno igual al
- * radio del playhead + su halo a izquierda y derecha, y la amplitud de la onda se clampa a la altura
- * disponible, de modo que —sumada al grosor del trazo y al strokeCap redondeado— NUNCA se salga de la
- * caja. Los progresos 0 y 1 quedan dentro del área visible (el playhead no se corta en los extremos).
- *
- * Debe llamarse con el ancho REAL disponible en px (no un ancho fijo que luego se escale: el escalado
- * deforma la onda). Quien llama recuerda el resultado con `remember(fraction, wPx)`.
+ * La MAREA del widget, pintada a mano en un [Bitmap] (Glance no tiene onda ni progreso). Es una FOTO
+ * FIJA de la marea de Now Playing ([com.luis.marlune.ui.components.Marea]): usa EXACTAMENTE sus mismas
+ * constantes (longitud de onda, amplitud, trazos, playhead) convertidas a px con la densidad real, y su
+ * misma fórmula de onda (fase 0: sin animación). Parte reproducida = onda aqua; pendiente = línea plana
+ * #3A3357 al 30 % de alpha (el mismo track de la app); playhead = halo + anillo de fondo + punto.
  */
 internal object WidgetTide {
 
-    private const val TRACK = 0xFF3A3357.toInt()
+    // Mismas constantes que ui/components/Marea.kt (en dp; se pasan a px con la densidad).
+    private const val AMPLITUDE_DP = 2f
+    private const val WAVELENGTH_DP = 22f
+    private const val WAVE_STROKE_DP = 2f
+    private const val TRACK_STROKE_DP = 1.5f
+    private const val PLAYHEAD_RADIUS_DP = 4.5f
+    private const val PLAYHEAD_RING_DP = 6.5f
+    private const val PLAYHEAD_HALO_DP = 10f
+    private const val STEP_DP = 2f
+
     private const val WAVE = 0xFF6FD8C6.toInt()
     private const val PLAYHEAD = 0xFFA99BFF.toInt()
+    private const val TRACK = 0xFF3A3357.toInt()
+    private const val BACKGROUND = 0xFF0A0910.toInt()
+    private const val TRACK_ALPHA = 77 // 0.30 * 255 (mismo alpha del track de la app)
+    private const val HALO_ALPHA = 56 // 0.22 * 255
 
     /**
      * @param widthPx ancho REAL del lienzo en píxeles.
-     * @param heightPx alto del lienzo en píxeles.
+     * @param heightPx alto del lienzo en píxeles (usar ~24 dp en px, como la marea de la app).
+     * @param density densidad real del dispositivo, para convertir las constantes dp a px.
      * @param fraction progreso reproducido en 0f..1f.
      */
-    fun render(widthPx: Int, heightPx: Int, fraction: Float): Bitmap {
+    fun render(widthPx: Int, heightPx: Int, density: Float, fraction: Float): Bitmap {
         val w = widthPx.coerceAtLeast(2)
         val h = heightPx.coerceAtLeast(2)
         val bitmap = createBitmap(w, h)
         val canvas = Canvas(bitmap)
-        val midY = h / 2f
+        val centerY = h / 2f
 
-        // Grosores/radios derivados del alto, todos acotados para no exceder la media altura.
-        val stroke = (h * 0.11f).coerceIn(2f, h / 5f)
-        val playheadR = (h * 0.18f).coerceIn(stroke, midY - 1f)
-        val halo = (playheadR * 1.5f).coerceAtMost(midY - 1f)
-        val pad = halo + 1f // padding izq/der = radio del playhead + halo
+        val amplitudePx = AMPLITUDE_DP * density
+        val wavelengthPx = WAVELENGTH_DP * density
+        val angularStep = (2.0 * Math.PI / wavelengthPx).toFloat()
+        val haloR = PLAYHEAD_HALO_DP * density
+        val pad = haloR // reserva para que el halo no se recorte en los extremos (0 % y 100 %)
         val left = pad
         val right = (w - pad).coerceAtLeast(left + 1f)
         val usableW = right - left
-
-        // Amplitud clampeada: onda + media línea del trazo NUNCA pasa de la mitad de la altura.
-        val maxAmp = (midY - stroke / 2f - 1f).coerceAtLeast(0f)
-        val amplitude = (h * 0.14f).coerceAtMost(maxAmp)
-
         val f = fraction.coerceIn(0f, 1f)
         val playedX = left + usableW * f
 
-        // Track pendiente (línea plana) de left..right.
-        val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = TRACK
-            strokeWidth = stroke
-            strokeCap = Paint.Cap.ROUND
-        }
-        canvas.drawLine(left, midY, right, midY, trackPaint)
+        fun waveY(x: Float): Float = centerY + amplitudePx * sin((x - left) * angularStep)
 
-        // Onda reproducida left..playedX.
-        if (playedX > left + 0.5f) {
+        // 1) Pendiente: línea plana #3A3357 al 30 % de alpha, de playedX a right (igual que la app).
+        if (playedX < right) {
+            val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = TRACK
+                alpha = TRACK_ALPHA
+                strokeWidth = TRACK_STROKE_DP * density
+                strokeCap = Paint.Cap.ROUND
+            }
+            canvas.drawLine(playedX, centerY, right, centerY, trackPaint)
+        }
+
+        // 2) Reproducido: onda sinusoidal aqua de left a playedX (misma fórmula que la app, fase 0).
+        if (playedX > left) {
             val wavePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = WAVE
                 style = Paint.Style.STROKE
-                strokeWidth = stroke
+                strokeWidth = WAVE_STROKE_DP * density
                 strokeCap = Paint.Cap.ROUND
                 strokeJoin = Paint.Join.ROUND
             }
-            val wavelength = (h * 2.6f).coerceAtLeast(6f)
+            val step = (STEP_DP * density).coerceAtLeast(1f)
             val path = Path()
-            path.moveTo(left, midY)
-            var x = left
+            path.moveTo(left, waveY(left))
+            var x = left + step
             while (x < playedX) {
-                val y = midY + amplitude * sin(((x - left) / wavelength) * 2.0 * Math.PI).toFloat()
-                path.lineTo(x, y)
-                x += 1.5f
+                path.lineTo(x, waveY(x))
+                x += step
             }
-            val yEnd = midY + amplitude * sin(((playedX - left) / wavelength) * 2.0 * Math.PI).toFloat()
-            path.lineTo(playedX, yEnd)
+            path.lineTo(playedX, waveY(playedX))
             canvas.drawPath(path, wavePaint)
         }
 
-        // Playhead SIEMPRE dentro del área visible (incluye 0 y 1).
-        val cx = playedX.coerceIn(left, right)
-        val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PLAYHEAD; alpha = 64 }
-        val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PLAYHEAD }
-        canvas.drawCircle(cx, midY, halo, haloPaint)
-        canvas.drawCircle(cx, midY, playheadR, dotPaint)
+        // 3) Playhead en la frontera: halo (alpha) + anillo de separación (fondo) + punto sólido.
+        val headY = waveY(playedX)
+        canvas.drawCircle(playedX, headY, haloR, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PLAYHEAD; alpha = HALO_ALPHA })
+        canvas.drawCircle(playedX, headY, PLAYHEAD_RING_DP * density, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = BACKGROUND })
+        canvas.drawCircle(playedX, headY, PLAYHEAD_RADIUS_DP * density, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = PLAYHEAD })
         return bitmap
     }
 }
