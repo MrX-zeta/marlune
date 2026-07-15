@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -28,7 +28,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,20 +41,35 @@ import com.luis.marlune.ui.theme.placeholderAccentFor
 private val CoverShape = RoundedCornerShape(10.dp)
 
 /**
- * Panel "A continuación": la cola REAL del `MediaController`. Muestra lo ya reproducido (atenuado),
- * la pista actual (resaltada con el ecualizador de "sonando") y lo que viene. Tocar una fila salta a
- * esa pista (sin rearmar la cola); la X la quita de la cola (no toca biblioteca ni archivos). Se abre
- * desde Now Playing sin minimizar. Reutiliza portada, ecualizador y paleta de la Biblioteca.
+ * Panel "A continuación": la cola REAL del `MediaController`, mirando SOLO hacia adelante (estilo
+ * Spotify). No muestra el historial (lo ya reproducido): la lista EMPIEZA en la pista actual.
+ *  - Fila 1: pista actual, resaltada con el ecualizador de "sonando", sin ✕.
+ *  - "A continuación en la cola": lo añadido a mano con "Añadir a la cola" que aún no ha sonado
+ *    (justo debajo de la actual; se omite si no hay).
+ *  - "A continuación de: <origen>": el resto de lo que viene por contexto (biblioteca, álbum…).
+ *
+ * Solo es presentación: los índices que se pasan a saltar/quitar son los REALES de la cola del
+ * player. Tocar una fila salta a esa pista (sin rearmar la cola); la ✕ la quita.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun QueueSheet(
     queue: QueueUiState,
+    source: String,
     onJumpTo: (Int) -> Unit,
     onRemove: (Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val current = queue.items.getOrNull(queue.currentIndex)
+    // Solo lo que VIENE (índice REAL > actual); el historial no se muestra. Se separan los añadidos a
+    // mano (sección manual) del resto (contexto); un manual sale de su sección al pasar a ser la actual.
+    val upcoming = buildList {
+        for (i in (queue.currentIndex + 1) until queue.items.size) add(i to queue.items[i])
+    }
+    val manualUpcoming = upcoming.filter { (_, item) -> item.manual }
+    val contextUpcoming = upcoming.filterNot { (_, item) -> item.manual }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -66,15 +80,7 @@ fun QueueSheet(
             modifier = Modifier.fillMaxWidth().navigationBarsPadding(),
             contentPadding = PaddingValues(bottom = 16.dp),
         ) {
-            item(key = "queue-header") {
-                Text(
-                    text = stringResource(R.string.queue_title),
-                    style = MarluneTheme.typography.titleMedium,
-                    color = MarluneTheme.colors.textPrimary,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
-                )
-            }
-            if (queue.isEmpty) {
+            if (current == null) {
                 item(key = "queue-empty") {
                     Text(
                         text = stringResource(R.string.queue_empty),
@@ -83,21 +89,53 @@ fun QueueSheet(
                         modifier = Modifier.padding(horizontal = 20.dp, vertical = 24.dp),
                     )
                 }
-            } else {
-                itemsIndexed(
-                    queue.items,
-                    key = { index, item -> "$index:${item.mediaId}" },
-                    contentType = { _, _ -> "queueRow" },
-                ) { index, item ->
+                return@LazyColumn
+            }
+
+            // Fila 1: la pista actual (resaltada, con ecualizador, sin ✕).
+            item(key = "cur:${queue.currentIndex}:${current.mediaId}", contentType = "queueRow") {
+                QueueRow(
+                    item = current,
+                    isCurrent = true,
+                    isPlaying = queue.isPlaying,
+                    onClick = { onJumpTo(queue.currentIndex); onDismiss() },
+                    onRemove = {},
+                )
+            }
+
+            // Sección "A continuación en la cola": añadidas a mano y aún no reproducidas (solo si hay).
+            if (manualUpcoming.isNotEmpty()) {
+                item(key = "hdr-manual") { QueueSectionHeader(stringResource(R.string.queue_section_added)) }
+                items(
+                    manualUpcoming,
+                    key = { (index, item) -> "m:$index:${item.mediaId}" },
+                    contentType = { _ -> "queueRow" },
+                ) { (index, item) ->
                     QueueRow(
                         item = item,
-                        isCurrent = index == queue.currentIndex,
+                        isCurrent = false,
                         isPlaying = queue.isPlaying,
-                        played = index < queue.currentIndex,
-                        onClick = {
-                            onJumpTo(index)
-                            onDismiss()
-                        },
+                        onClick = { onJumpTo(index); onDismiss() },
+                        onRemove = { onRemove(index) },
+                    )
+                }
+            }
+
+            // Sección "A continuación de: <origen>": el resto de lo que viene por contexto.
+            if (contextUpcoming.isNotEmpty()) {
+                item(key = "hdr-context") {
+                    QueueSectionHeader(stringResource(R.string.queue_section_from, source))
+                }
+                items(
+                    contextUpcoming,
+                    key = { (index, item) -> "c:$index:${item.mediaId}" },
+                    contentType = { _ -> "queueRow" },
+                ) { (index, item) ->
+                    QueueRow(
+                        item = item,
+                        isCurrent = false,
+                        isPlaying = queue.isPlaying,
+                        onClick = { onJumpTo(index); onDismiss() },
                         onRemove = { onRemove(index) },
                     )
                 }
@@ -107,11 +145,22 @@ fun QueueSheet(
 }
 
 @Composable
+private fun QueueSectionHeader(text: String) {
+    Text(
+        text = text,
+        style = MarluneTheme.typography.labelLarge,
+        color = MarluneTheme.colors.textSecondary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
 private fun QueueRow(
     item: QueueItem,
     isCurrent: Boolean,
     isPlaying: Boolean,
-    played: Boolean,
     onClick: () -> Unit,
     onRemove: () -> Unit,
 ) {
@@ -121,8 +170,6 @@ private fun QueueRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            // Lo ya reproducido se atenúa; la pista actual y lo que viene, a plena opacidad.
-            .graphicsLayer { alpha = if (played) 0.5f else 1f }
             .padding(horizontal = 20.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
