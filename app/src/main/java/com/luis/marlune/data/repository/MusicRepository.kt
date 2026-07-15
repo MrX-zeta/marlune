@@ -1,5 +1,6 @@
 package com.luis.marlune.data.repository
 
+import com.luis.marlune.data.datastore.SettingsStore
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
@@ -9,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -30,6 +32,7 @@ sealed interface LibraryState {
  */
 class MusicRepository(
     private val source: MediaStoreAudioSource,
+    settings: SettingsStore,
     scope: CoroutineScope,
 ) {
 
@@ -38,10 +41,17 @@ class MusicRepository(
      * consulta en IO, compartida por todos): `WhileSubscribed(5000)` mantiene el valor durante la
      * navegación, de modo que la query no se repite al re-suscribirse; el `ContentObserver`
      * actualiza esta caché. Empieza en [LibraryState.Loading] hasta la primera consulta.
+     *
+     * Aplica el filtro de PRESENTACIÓN de clips cortos (combina con el ajuste): oculta audios muy
+     * breves. Es solo presentación —no toca MediaStore ni Room—; al cambiar el ajuste, todo lo que
+     * deriva de aquí (canciones, álbumes, artistas, y la resolución de favoritos/listas/historial) se
+     * refresca reactivamente, y las pistas ocultas reaparecen al desactivarlo.
      */
-    val library: StateFlow<LibraryState> = source.observeSongs()
-        .map<List<Song>, LibraryState> { LibraryState.Content(it) }
-        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), LibraryState.Loading)
+    val library: StateFlow<LibraryState> =
+        combine(source.observeSongs(), settings.shortClipFilter) { songs, filter ->
+            val visible = if (filter.enabled) songs.filter { it.durationMs >= filter.minDurationMs } else songs
+            LibraryState.Content(visible)
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), LibraryState.Loading)
 
     /** Lista de canciones ya cargada (vacía mientras está en Loading). */
     private val songs: Flow<List<Song>> = library.map { state ->

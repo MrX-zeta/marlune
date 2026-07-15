@@ -69,7 +69,27 @@
     <string name="settings_title">Ajustes</string>
     <string name="settings_subtitle">Personaliza tu experiencia</string>
     <string name="settings_close">Cerrar</string>
+    <string name="settings_playback_section">Reproducción</string>
+    <string name="settings_library_section">Biblioteca</string>
     <string name="settings_lyrics_section">Letras</string>
+    <!-- Escanear medios -->
+    <string name="scan_title">Escanear medios</string>
+    <string name="scan_desc">Busca canciones nuevas en tu dispositivo</string>
+    <string name="scan_done">Búsqueda completada</string>
+    <!-- Filtro de clips cortos -->
+    <string name="short_clip_title">Ignorar clips cortos</string>
+    <string name="short_clip_desc">Oculta audios muy breves, como tonos y notas de voz</string>
+    <string name="short_clip_seconds">%1$d s</string>
+    <!-- Temporizador de apagado -->
+    <string name="sleep_title">Temporizador de apagado</string>
+    <string name="sleep_desc">Detiene la reproducción tras un tiempo</string>
+    <string name="sleep_off">Desactivado</string>
+    <string name="sleep_15">15 min</string>
+    <string name="sleep_30">30 min</string>
+    <string name="sleep_45">45 min</string>
+    <string name="sleep_60">1 h</string>
+    <string name="sleep_end_of_track">Al terminar la canción</string>
+    <string name="sleep_remaining">Quedan %1$d min</string>
     <string name="settings_internet_lyrics">Buscar letras en internet</string>
     <string name="settings_internet_lyrics_desc">Envía el título y artista de la canción a un servicio de letras (LRCLIB). Desactivado, Marlune no se conecta a internet.</string>
     <string name="settings_downloaded_lyrics">Letras descargadas</string>

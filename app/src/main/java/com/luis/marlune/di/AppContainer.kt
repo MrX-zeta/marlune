@@ -41,7 +41,10 @@ class AppContainer(context: Context) {
 
     private val mediaStoreAudioSource = MediaStoreAudioSource(context.applicationContext)
 
-    val musicRepository: MusicRepository = MusicRepository(mediaStoreAudioSource, appScope)
+    /** Ajustes de la app (opt-in de letras por internet off por defecto; filtro de clips cortos). */
+    val settingsStore = SettingsStore(context.applicationContext)
+
+    val musicRepository: MusicRepository = MusicRepository(mediaStoreAudioSource, settingsStore, appScope)
 
     /** Motor de reproducción (Media3), envuelto para no acoplar la UI a ExoPlayer/MediaController. */
     val playbackRepository: PlaybackRepository = PlaybackRepository(context.applicationContext)
@@ -67,9 +70,6 @@ class AppContainer(context: Context) {
     val savedSessionRepository: SavedSessionRepository = SavedSessionRepository(sessionStore, musicRepository)
 
     private val lyricsFolderStore = LyricsFolderStore(context.applicationContext)
-
-    /** Ajustes de la app (opt-in de letras por internet, off por defecto). */
-    val settingsStore = SettingsStore(context.applicationContext)
 
     /** Preferencias de Biblioteca (orden de Canciones), persistidas entre sesiones. */
     val librarySortStore = LibrarySortStore(context.applicationContext)

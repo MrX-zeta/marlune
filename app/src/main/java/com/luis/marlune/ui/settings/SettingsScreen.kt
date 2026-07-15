@@ -1,7 +1,11 @@
 package com.luis.marlune.ui.settings
 
+import android.os.SystemClock
 import android.text.format.Formatter
 import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -16,27 +20,36 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.PlayCircleOutline
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
@@ -51,27 +64,72 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.luis.marlune.R
 import com.luis.marlune.data.datastore.SettingsStore
+import com.luis.marlune.data.datastore.ShortClipFilter
 import com.luis.marlune.data.lyrics.LyricsCacheStats
 import com.luis.marlune.data.repository.LyricsRepository
+import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.di.rememberLyricsRepository
+import com.luis.marlune.di.rememberMusicRepository
+import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.di.rememberSettingsStore
+import com.luis.marlune.playback.PlaybackRepository
+import com.luis.marlune.playback.SleepTimerOption
+import com.luis.marlune.playback.SleepTimerState
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-/** ViewModel de Ajustes: opt-in de letras por internet (off por defecto) y borrado de su caché. */
+/** ViewModel de Ajustes: opt-in de letras por internet (off por defecto), borrado de su caché y temporizador. */
 class SettingsViewModel(
     private val settings: SettingsStore,
     private val lyrics: LyricsRepository,
+    private val playback: PlaybackRepository,
+    private val music: MusicRepository,
 ) : ViewModel() {
 
     val internetLyrics: StateFlow<Boolean> =
         settings.internetLyrics.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Temporizador de apagado activo (o `null`). Vive en la capa de playback. */
+    val sleepTimer: StateFlow<SleepTimerState?> = playback.sleepTimer
+
+    fun setSleepTimer(option: SleepTimerOption) = playback.startSleepTimer(option)
+
+    // Escaneo manual de medios: MISMA acción que el pull-to-refresh de Biblioteca (no se duplica lógica).
+    private val _scanning = MutableStateFlow(false)
+    val scanning: StateFlow<Boolean> = _scanning.asStateFlow()
+
+    fun scanMedia() {
+        if (_scanning.value) return
+        viewModelScope.launch {
+            _scanning.value = true
+            try {
+                music.rescan()
+            } finally {
+                _scanning.value = false
+            }
+        }
+    }
+
+    // Filtro de clips cortos (presentación): al cambiarlo, la biblioteca se refresca reactivamente.
+    val shortClipFilter: StateFlow<ShortClipFilter> =
+        settings.shortClipFilter.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ShortClipFilter(true, 30))
+
+    fun setShortClipEnabled(enabled: Boolean) {
+        viewModelScope.launch { settings.setShortClipEnabled(enabled) }
+    }
+
+    fun setShortClipMinSeconds(seconds: Int) {
+        viewModelScope.launch { settings.setShortClipMinSeconds(seconds) }
+    }
 
     // Reactivo: se recalcula al descargar o borrar (señal `cacheChanges`), así el contador de Ajustes
     // se actualiza en tiempo real sin re-entrar a la pantalla.
@@ -90,23 +148,42 @@ class SettingsViewModel(
     }
 
     companion object {
-        fun factory(settings: SettingsStore, lyrics: LyricsRepository) =
-            viewModelFactory { initializer { SettingsViewModel(settings, lyrics) } }
+        fun factory(
+            settings: SettingsStore,
+            lyrics: LyricsRepository,
+            playback: PlaybackRepository,
+            music: MusicRepository,
+        ) = viewModelFactory { initializer { SettingsViewModel(settings, lyrics, playback, music) } }
     }
 }
 
 @Composable
 fun SettingsRoute(onBack: () -> Unit, contentPadding: PaddingValues) {
     val vm: SettingsViewModel = viewModel(
-        factory = SettingsViewModel.factory(rememberSettingsStore(), rememberLyricsRepository()),
+        factory = SettingsViewModel.factory(
+            rememberSettingsStore(),
+            rememberLyricsRepository(),
+            rememberPlaybackRepository(),
+            rememberMusicRepository(),
+        ),
     )
     val internet by vm.internetLyrics.collectAsStateWithLifecycle()
     val stats by vm.cacheStats.collectAsStateWithLifecycle()
+    val sleepTimer by vm.sleepTimer.collectAsStateWithLifecycle()
+    val scanning by vm.scanning.collectAsStateWithLifecycle()
+    val shortClip by vm.shortClipFilter.collectAsStateWithLifecycle()
     SettingsScreen(
         internetLyrics = internet,
         cacheStats = stats,
+        sleepTimer = sleepTimer,
+        scanning = scanning,
+        shortClip = shortClip,
         onToggleInternet = vm::setInternetLyrics,
         onClearCache = vm::clearLyricsCache,
+        onSetSleepTimer = vm::setSleepTimer,
+        onScanMedia = vm::scanMedia,
+        onToggleShortClip = vm::setShortClipEnabled,
+        onSetShortClipSeconds = vm::setShortClipMinSeconds,
         onBack = onBack,
         contentPadding = contentPadding,
     )
@@ -116,13 +193,50 @@ fun SettingsRoute(onBack: () -> Unit, contentPadding: PaddingValues) {
 private fun SettingsScreen(
     internetLyrics: Boolean,
     cacheStats: LyricsCacheStats,
+    sleepTimer: SleepTimerState?,
+    scanning: Boolean,
+    shortClip: ShortClipFilter,
     onToggleInternet: (Boolean) -> Unit,
     onClearCache: () -> Unit,
+    onSetSleepTimer: (SleepTimerOption) -> Unit,
+    onScanMedia: () -> Unit,
+    onToggleShortClip: (Boolean) -> Unit,
+    onSetShortClipSeconds: (Int) -> Unit,
     onBack: () -> Unit,
     contentPadding: PaddingValues,
 ) {
     val context = LocalContext.current
     var showConfirm by remember { mutableStateOf(false) }
+    var showTimerDialog by remember { mutableStateOf(false) }
+
+    // Resultado breve al terminar de escanear (transición escaneando → listo).
+    var scanCompleted by remember { mutableStateOf(false) }
+    LaunchedEffect(scanning) {
+        if (scanning) scanCompleted = true
+        else if (scanCompleted) {
+            scanCompleted = false
+            Toast.makeText(context, R.string.scan_done, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // Etiqueta del temporizador en VIVO: cuenta atrás cada segundo para los modos temporizados, o texto
+    // fijo para "al terminar la canción"; `null` cuando no hay temporizador.
+    var timerLabel by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(sleepTimer) {
+        val st = sleepTimer
+        val end = st?.endElapsedRealtime
+        when {
+            st == null -> timerLabel = null
+            end == null -> timerLabel = context.getString(R.string.sleep_end_of_track)
+            else -> while (true) {
+                val remaining = end - SystemClock.elapsedRealtime()
+                if (remaining <= 0L) { timerLabel = null; break }
+                val minutes = ((remaining + 59_999L) / 60_000L).toInt() // redondeo hacia arriba
+                timerLabel = context.getString(R.string.sleep_remaining, minutes)
+                delay(1_000L)
+            }
+        }
+    }
 
     // Contador/tamaño de letras descargadas: MISMO texto y lógica que antes (solo cambia dónde se pinta).
     val cacheDescription = if (cacheStats.count == 0) {
@@ -176,8 +290,79 @@ private fun SettingsScreen(
                     .weight(1f)
                     .verticalScroll(rememberScrollState()),
             ) {
-                // Grupo LETRAS (único que existe hoy): toggle de internet + letras descargadas.
+                // Grupo REPRODUCCIÓN: temporizador de apagado.
                 StaggeredReveal(index = 0) {
+                    SettingsGroup(
+                        label = stringResource(R.string.settings_playback_section),
+                        icon = Icons.Rounded.PlayCircleOutline,
+                    ) {
+                        SettingRow(
+                            icon = Icons.Rounded.Bedtime,
+                            title = stringResource(R.string.sleep_title),
+                            description = stringResource(R.string.sleep_desc),
+                            onClick = { showTimerDialog = true },
+                            trailing = {
+                                Text(
+                                    text = timerLabel ?: stringResource(R.string.sleep_off),
+                                    style = MarluneTheme.typography.labelLarge,
+                                    color = if (timerLabel != null) MarluneTheme.colors.accent
+                                    else MarluneTheme.colors.textTertiary,
+                                )
+                            },
+                        )
+                    }
+                }
+
+                // Grupo BIBLIOTECA: escaneo manual de medios (misma acción que el pull-to-refresh).
+                StaggeredReveal(index = 1) {
+                    SettingsGroup(
+                        label = stringResource(R.string.settings_library_section),
+                        icon = Icons.Rounded.LibraryMusic,
+                    ) {
+                        SettingRow(
+                            icon = Icons.Rounded.Sync,
+                            title = stringResource(R.string.scan_title),
+                            description = stringResource(R.string.scan_desc),
+                            onClick = { if (!scanning) onScanMedia() },
+                            trailing = {
+                                if (scanning) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MarluneTheme.colors.accent,
+                                    )
+                                }
+                            },
+                        )
+                        SettingRowDivider()
+                        SettingRow(
+                            icon = Icons.Rounded.Timer,
+                            title = stringResource(R.string.short_clip_title),
+                            description = stringResource(R.string.short_clip_desc),
+                            trailing = {
+                                Switch(
+                                    checked = shortClip.enabled,
+                                    onCheckedChange = onToggleShortClip,
+                                    colors = SwitchDefaults.colors(
+                                        uncheckedBorderColor = MarluneTheme.colors.textTertiary,
+                                        uncheckedTrackColor = MarluneTheme.colors.surfaceElevated,
+                                        uncheckedThumbColor = MarluneTheme.colors.textSecondary,
+                                    ),
+                                )
+                            },
+                        )
+                        // Umbral seleccionable: solo cuando el filtro está activo.
+                        if (shortClip.enabled) {
+                            DurationChips(
+                                selectedSeconds = shortClip.minSeconds,
+                                onSelect = onSetShortClipSeconds,
+                            )
+                        }
+                    }
+                }
+
+                // Grupo LETRAS: toggle de internet + letras descargadas.
+                StaggeredReveal(index = 2) {
                     SettingsGroup(
                         label = stringResource(R.string.settings_lyrics_section),
                         icon = Icons.Rounded.Lyrics,
@@ -186,7 +371,18 @@ private fun SettingsScreen(
                             icon = Icons.Rounded.Language,
                             title = stringResource(R.string.settings_internet_lyrics),
                             description = stringResource(R.string.settings_internet_lyrics_desc),
-                            trailing = { Switch(checked = internetLyrics, onCheckedChange = onToggleInternet) },
+                            trailing = {
+                                Switch(
+                                    checked = internetLyrics,
+                                    onCheckedChange = onToggleInternet,
+                                    // Borde visible cuando está desactivado (antes casi imperceptible).
+                                    colors = SwitchDefaults.colors(
+                                        uncheckedBorderColor = MarluneTheme.colors.textTertiary,
+                                        uncheckedTrackColor = MarluneTheme.colors.surfaceElevated,
+                                        uncheckedThumbColor = MarluneTheme.colors.textSecondary,
+                                    ),
+                                )
+                            },
                         )
                         SettingRowDivider()
                         SettingRow(
@@ -233,6 +429,72 @@ private fun SettingsScreen(
             },
         )
     }
+
+    // Opciones del temporizador de apagado (elegir uno lo activa; "Desactivado" lo cancela).
+    if (showTimerDialog) {
+        SleepTimerDialog(
+            current = sleepTimer?.option ?: SleepTimerOption.OFF,
+            onSelect = {
+                showTimerDialog = false
+                onSetSleepTimer(it)
+            },
+            onDismiss = { showTimerDialog = false },
+        )
+    }
+}
+
+private val SleepTimerOptions = listOf(
+    SleepTimerOption.OFF,
+    SleepTimerOption.MIN_15,
+    SleepTimerOption.MIN_30,
+    SleepTimerOption.MIN_45,
+    SleepTimerOption.HOUR_1,
+    SleepTimerOption.END_OF_TRACK,
+)
+
+@Composable
+private fun sleepOptionLabel(option: SleepTimerOption): String = stringResource(
+    when (option) {
+        SleepTimerOption.OFF -> R.string.sleep_off
+        SleepTimerOption.MIN_15 -> R.string.sleep_15
+        SleepTimerOption.MIN_30 -> R.string.sleep_30
+        SleepTimerOption.MIN_45 -> R.string.sleep_45
+        SleepTimerOption.HOUR_1 -> R.string.sleep_60
+        SleepTimerOption.END_OF_TRACK -> R.string.sleep_end_of_track
+    },
+)
+
+/** Diálogo de selección única del temporizador; marca la opción activa con el acento. */
+@Composable
+private fun SleepTimerDialog(
+    current: SleepTimerOption,
+    onSelect: (SleepTimerOption) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.sleep_title)) },
+        text = {
+            Column(Modifier.fillMaxWidth()) {
+                SleepTimerOptions.forEach { option ->
+                    val selected = option == current
+                    Text(
+                        text = sleepOptionLabel(option),
+                        style = MarluneTheme.typography.bodyLarge,
+                        color = if (selected) MarluneTheme.colors.accent else MarluneTheme.colors.textPrimary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(option) }
+                            .padding(vertical = 12.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
 }
 
 /**
@@ -282,9 +544,13 @@ private fun SettingRow(
     title: String,
     description: String?,
     trailing: @Composable () -> Unit,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
@@ -311,6 +577,31 @@ private fun SettingRow(
         }
         Spacer(Modifier.width(12.dp))
         trailing()
+    }
+}
+
+private val ShortClipSecondsOptions = listOf(15, 30, 60)
+
+/** Chips de duración mínima (15/30/60 s): la activa se tiñe con el acento. Alineados tras el icono. */
+@Composable
+private fun DurationChips(selectedSeconds: Int, onSelect: (Int) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 52.dp, end = 16.dp, top = 2.dp, bottom = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ShortClipSecondsOptions.forEach { seconds ->
+            val selected = seconds == selectedSeconds
+            Text(
+                text = stringResource(R.string.short_clip_seconds, seconds),
+                style = MarluneTheme.typography.labelLarge,
+                color = if (selected) MarluneTheme.colors.accent else MarluneTheme.colors.textSecondary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (selected) MarluneTheme.colors.accentMuted else MarluneTheme.colors.divider)
+                    .clickable { onSelect(seconds) }
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        }
     }
 }
 

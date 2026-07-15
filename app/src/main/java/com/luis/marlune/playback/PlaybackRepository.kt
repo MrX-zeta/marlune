@@ -3,6 +3,8 @@ package com.luis.marlune.playback
 import android.content.ComponentName
 import android.content.Context
 import android.net.Uri
+import android.os.Bundle
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -63,12 +65,35 @@ data class PlaybackState(
 /**
  * Una entrada de la cola real del `MediaController`, con los metadatos que la UI necesita para
  * pintarla (sin re-consultar la biblioteca). [mediaId] es el `_ID` de MediaStore como texto.
+ * [manual] indica que se añadió a mano con "Añadir a la cola" (marcado en los extras del MediaItem):
+ * la UI de cola las agrupa aparte mientras no se hayan reproducido. Solo es presentación; la cola
+ * real del player sigue siendo una sola.
  */
 data class QueueItem(
     val mediaId: String,
     val title: String,
     val artist: String,
     val artworkUri: Uri?,
+    val manual: Boolean = false,
+)
+
+/** Opciones del temporizador de apagado. [minutes] = -1 significa "al terminar la canción". */
+enum class SleepTimerOption(val minutes: Int) {
+    OFF(0),
+    MIN_15(15),
+    MIN_30(30),
+    MIN_45(45),
+    HOUR_1(60),
+    END_OF_TRACK(-1),
+}
+
+/**
+ * Estado del temporizador ACTIVO. [endElapsedRealtime] (base `SystemClock.elapsedRealtime`) permite a
+ * la UI mostrar el tiempo restante en vivo; es `null` para "al terminar la canción" (sin cuenta atrás).
+ */
+data class SleepTimerState(
+    val option: SleepTimerOption,
+    val endElapsedRealtime: Long?,
 )
 
 /**
@@ -101,6 +126,14 @@ class PlaybackRepository(context: Context) {
     private val _queue = MutableStateFlow<List<QueueItem>>(emptyList())
     val queue: StateFlow<List<QueueItem>> = _queue.asStateFlow()
 
+    // Temporizador de apagado. Vive aquí (capa de playback, proceso de la app): mientras el proceso
+    // sigue vivo —servicio en foreground durante la reproducción— funciona con la app en segundo plano.
+    // NO se persiste: si el proceso muere, expira solo (no se reactiva al reabrir).
+    private val _sleepTimer = MutableStateFlow<SleepTimerState?>(null)
+    val sleepTimer: StateFlow<SleepTimerState?> = _sleepTimer.asStateFlow()
+    private var sleepJob: Job? = null
+    private var pauseAtTrackEnd = false
+
     // Naturaleza del último cambio de pista, derivada del `reason` de Media3 (fuente única).
     private var transitionId = 0
     private var transitionKind = TrackChange.DIRECT
@@ -129,6 +162,13 @@ class PlaybackRepository(context: Context) {
             pendingSeekDirection = null // consumida (o irrelevante para este tipo de transición)
             lastTransitionIndex = newIndex
             transitionId++
+            // Temporizador "al terminar la canción": la pista actual acabó y auto-avanzó → pausa aquí
+            // (la siguiente queda cargada en pausa) y se desactiva solo.
+            if (pauseAtTrackEnd && reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO) {
+                pauseAtTrackEnd = false
+                _sleepTimer.value = null
+                c.pause()
+            }
             // El estado se re-emite en onEvents (que agrupa esta transición); ahí se incluye.
         }
 
@@ -189,12 +229,12 @@ class PlaybackRepository(context: Context) {
     fun addToQueueNext(song: Song) {
         runOrQueue { c ->
             if (c.mediaItemCount == 0) {
-                c.setMediaItem(song.toMediaItem())
+                c.setMediaItem(song.toMediaItem(manual = true))
                 c.prepare()
                 c.play()
             } else {
                 val insertIndex = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
-                c.addMediaItem(insertIndex, song.toMediaItem())
+                c.addMediaItem(insertIndex, song.toMediaItem(manual = true))
             }
         }
     }
@@ -254,6 +294,52 @@ class PlaybackRepository(context: Context) {
         controller?.let { it.repeatMode = it.repeatMode.toRepeatMode().next().toMedia3() }
     }
 
+    /**
+     * Arma (o reemplaza) el temporizador de apagado. [SleepTimerOption.OFF] lo cancela. Para los modos
+     * temporizados, al cumplirse hace un fade-out corto y pausa; para "al terminar la canción", se
+     * pausa en el auto-avance (ver el listener). No persiste; expira solo si el proceso muere.
+     */
+    fun startSleepTimer(option: SleepTimerOption) {
+        cancelSleepTimer()
+        when (option) {
+            SleepTimerOption.OFF -> Unit
+            SleepTimerOption.END_OF_TRACK -> {
+                pauseAtTrackEnd = true
+                _sleepTimer.value = SleepTimerState(option, endElapsedRealtime = null)
+            }
+            else -> {
+                val durationMs = option.minutes * 60_000L
+                _sleepTimer.value = SleepTimerState(option, SystemClock.elapsedRealtime() + durationMs)
+                sleepJob = mainScope.launch {
+                    kotlinx.coroutines.delay(durationMs)
+                    fadeOutAndPause()
+                    _sleepTimer.value = null
+                }
+            }
+        }
+    }
+
+    /** Cancela el temporizador de apagado (si hay uno). */
+    fun cancelSleepTimer() {
+        sleepJob?.cancel()
+        sleepJob = null
+        pauseAtTrackEnd = false
+        _sleepTimer.value = null
+    }
+
+    /** Fade-out breve del volumen y pausa; restaura el volumen para la próxima reproducción. */
+    private suspend fun fadeOutAndPause() {
+        val c = controller ?: return
+        val startVolume = c.volume
+        val steps = 12
+        repeat(steps) { i ->
+            c.volume = startVolume * (1f - (i + 1f) / steps)
+            kotlinx.coroutines.delay(SLEEP_FADE_STEP_MS)
+        }
+        c.pause()
+        c.volume = startVolume // el próximo play arranca a volumen normal
+    }
+
     private fun refresh() {
         val c = controller ?: return
         val item = c.currentMediaItem
@@ -289,6 +375,7 @@ class PlaybackRepository(context: Context) {
                 title = item.mediaMetadata.title?.toString().orEmpty(),
                 artist = item.mediaMetadata.artist?.toString().orEmpty(),
                 artworkUri = item.mediaMetadata.artworkUri,
+                manual = item.mediaMetadata.extras?.getBoolean(EXTRA_MANUAL_QUEUE, false) == true,
             )
         }
 
@@ -345,7 +432,7 @@ class PlaybackRepository(context: Context) {
         RepeatMode.OFF -> Player.REPEAT_MODE_OFF
     }
 
-    private fun Song.toMediaItem(): MediaItem =
+    private fun Song.toMediaItem(manual: Boolean = false): MediaItem =
         MediaItem.Builder()
             .setMediaId(id.toString()) // el _ID de MediaStore: clave para referenciar (Room, luego)
             .setUri(contentUri) // content URI, nunca ruta (scoped storage)
@@ -355,11 +442,16 @@ class PlaybackRepository(context: Context) {
                     .setArtist(artist)
                     .setAlbumTitle(album)
                     .setArtworkUri(artworkUri) // la notificación y la UI cargan la carátula desde aquí
+                    // Marca de "añadido a mano": viaja con el ítem por el MediaController y deja que la
+                    // UI de cola lo agrupe aparte. No altera la reproducción ni la cola real.
+                    .apply { if (manual) setExtras(Bundle().apply { putBoolean(EXTRA_MANUAL_QUEUE, true) }) }
                     .build(),
             )
             .build()
 
     private companion object {
         const val POSITION_TICK_MS = 500L
+        const val EXTRA_MANUAL_QUEUE = "com.luis.marlune.MANUAL_QUEUE"
+        const val SLEEP_FADE_STEP_MS = 40L // 12 pasos ≈ 480 ms de fade-out
     }
 }
