@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -248,19 +249,31 @@ private fun EmptyLyrics(
         }
 
         // Descubrimiento: con el opt-in de red APAGADO, enlace discreto que lleva a Ajustes (no lo
-        // enciende por el usuario). Con el ajuste ON no aparece (ya se intentó la red).
+        // enciende por el usuario). Con el ajuste ON no aparece (ya se intentó la red). Único sitio de
+        // la app donde se menciona la conexión. Se tiñe de acento (con icono) para leerse como acción.
         if (!internetEnabled) {
             Spacer(Modifier.height(16.dp))
-            Text(
-                text = stringResource(R.string.lyrics_search_online),
-                style = MarluneTheme.typography.bodySmall,
-                color = MarluneTheme.colors.textTertiary,
-                textAlign = TextAlign.Center,
+            Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
                     .clickable { onSearchOnline() }
                     .padding(horizontal = 12.dp, vertical = 6.dp),
-            )
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Language,
+                    contentDescription = null,
+                    tint = MarluneTheme.colors.accent,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = stringResource(R.string.lyrics_search_online),
+                    style = MarluneTheme.typography.labelLarge,
+                    color = MarluneTheme.colors.accent,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }
