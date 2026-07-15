@@ -63,9 +63,19 @@
     <string name="settings_lyrics_section">Letras</string>
     <string name="settings_internet_lyrics">Buscar letras en internet</string>
     <string name="settings_internet_lyrics_desc">Envía el título y artista de la canción a un servicio de letras (LRCLIB). Desactivado, Marlune no se conecta a internet.</string>
-    <string name="settings_clear_cache">Borrar caché de letras</string>
-    <string name="settings_clear_cache_done">Caché de letras borrada</string>
+    <string name="settings_downloaded_lyrics">Letras descargadas</string>
+    <string name="settings_cache_empty">No hay letras guardadas</string>
+    <string name="settings_clear_downloaded">Borrar letras descargadas</string>
+    <string name="settings_clear_confirm_title">¿Borrar letras descargadas?</string>
+    <string name="settings_clear_confirm_msg">Se borrarán las letras descargadas de internet. Las letras de tus archivos (.lrc y etiquetas) NO se tocan. Podrás volver a descargarlas si la búsqueda en internet está activada.</string>
+    <string name="settings_clear_confirm_yes">Borrar</string>
+    <string name="settings_clear_confirm_no">Cancelar</string>
+    <string name="settings_clear_done">Letras descargadas borradas</string>
     <string name="settings_open">Ajustes</string>
+    <plurals name="settings_cache_count">
+        <item quantity="one">%1$d letra guardada · %2$s</item>
+        <item quantity="other">%1$d letras guardadas · %2$s</item>
+    </plurals>
 
     <!-- Inicio -->
     <string name="greeting_morning">Buenos días</string>

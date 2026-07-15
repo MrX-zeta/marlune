@@ -10,6 +10,7 @@ import com.luis.marlune.data.lyrics.LrcLibClient
 import com.luis.marlune.data.lyrics.LrcLibLyrics
 import com.luis.marlune.data.lyrics.LrcLibResult
 import com.luis.marlune.data.lyrics.LrcParser
+import com.luis.marlune.data.lyrics.LyricsCacheStats
 import com.luis.marlune.data.lyrics.NetworkLyricsCache
 import com.luis.marlune.domain.model.LyricLine
 import com.luis.marlune.domain.model.Lyrics
@@ -17,6 +18,9 @@ import com.luis.marlune.domain.model.LyricsFolderRequest
 import com.luis.marlune.domain.model.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -59,6 +63,16 @@ class LyricsRepository(
     /** Carpetas SAF concedidas (para re-resolver al conceder y para Ajustes). */
     val grantedFolders: Flow<Set<Uri>> = folderStore.folders
 
+    // Se incrementa al BORRAR la caché, para que la UI RE-RESUELVA (si no, el StateFlow de letras
+    // seguiría mostrando la letra descargada ya borrada hasta el siguiente cambio de pista).
+    private val _cacheInvalidations = MutableStateFlow(0)
+    val cacheInvalidations: StateFlow<Int> = _cacheInvalidations.asStateFlow()
+
+    // Se incrementa en CUALQUIER cambio de la caché de descargas (guardar una nueva o borrar), para
+    // que Ajustes actualice el contador/tamaño en tiempo real sin re-entrar a la pantalla.
+    private val _cacheChanges = MutableStateFlow(0)
+    val cacheChanges: StateFlow<Int> = _cacheChanges.asStateFlow()
+
     // Índice de .lrc de TODAS las carpetas concedidas, cacheado hasta que cambie el conjunto.
     private val indexMutex = Mutex()
     @Volatile private var indexedKey: String? = null
@@ -92,6 +106,7 @@ class LyricsRepository(
         when (val r = lrcLibClient.fetch(song.title, song.artist, song.album, song.durationMs / 1000)) {
             is LrcLibResult.Found -> {
                 networkCache.put(song.id, r.lyrics.syncedLyrics, r.lyrics.plainLyrics)
+                _cacheChanges.value += 1 // nueva letra descargada → Ajustes actualiza el contador
                 val parsed = toLyrics(r.lyrics)
                 val mode = when {
                     parsed?.synced == true -> "SINCRONIZADO"
@@ -107,11 +122,21 @@ class LyricsRepository(
         }
     }
 
-    /** Borra la caché de letras descargadas (Ajustes). */
-    fun clearNetworkCache() {
-        Log.d(LYRICS_TAG, "borrar caché de letras (disco privado)")
+    /**
+     * Borra TODAS las letras descargadas: disco privado + caché en memoria del repo, y RE-DISPARA la
+     * resolución (vía [cacheInvalidations]) para que la UI deje de mostrar la letra ya borrada. NO
+     * toca las letras locales (.lrc/etiquetas): esas se releen de sus fuentes.
+     */
+    suspend fun clearNetworkCache() = withContext(Dispatchers.IO) {
+        Log.d(LYRICS_TAG, "borrar letras descargadas (disco + memoria) + re-resolver")
         networkCache.clear()
+        cache.clear() // memoria del repo (se re-lee lo local; lo descargado desaparece)
+        _cacheInvalidations.value += 1 // re-resolver la pista actual
+        _cacheChanges.value += 1 // actualizar el contador de Ajustes
     }
+
+    /** Cuántas letras descargadas hay y cuánto ocupan (para Ajustes). */
+    suspend fun lyricsCacheStats(): LyricsCacheStats = withContext(Dispatchers.IO) { networkCache.stats() }
 
     private fun toLyrics(l: LrcLibLyrics): Lyrics? {
         l.syncedLyrics?.let { s -> LrcParser.parse(s)?.let { return it } }

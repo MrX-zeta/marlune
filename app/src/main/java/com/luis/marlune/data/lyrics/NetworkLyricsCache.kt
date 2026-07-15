@@ -5,6 +5,9 @@ import com.luis.marlune.domain.model.LyricLine
 import com.luis.marlune.domain.model.Lyrics
 import java.io.File
 
+/** Cuántas letras descargadas hay en caché y cuánto ocupan (para mostrarlo en Ajustes). */
+data class LyricsCacheStats(val count: Int, val bytes: Long)
+
 /**
  * Caché en disco de las letras descargadas de internet, en almacenamiento PRIVADO de la app
  * (`filesDir/lyrics_cache`, sin permisos, no toca las carpetas del usuario). Se cachea por id de
@@ -40,5 +43,13 @@ class NetworkLyricsCache(context: Context) {
 
     fun clear() {
         runCatching { dir.deleteRecursively() }
+    }
+
+    /** Nº de letras cacheadas (archivos `.lrc`/`.txt`) y bytes totales. */
+    fun stats(): LyricsCacheStats {
+        val files = dir.listFiles()
+            ?.filter { it.isFile && (it.name.endsWith(".lrc", true) || it.name.endsWith(".txt", true)) }
+            .orEmpty()
+        return LyricsCacheStats(count = files.size, bytes = files.sumOf { it.length() })
     }
 }

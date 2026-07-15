@@ -68,24 +68,32 @@ class PlayerViewModel(
         val request: LyricsFolderRequest?,
     )
 
-    // Resuelve al cambiar de pista, de carpetas concedidas, o del ajuste de red; emite "cargando"
-    // mientras va a IO. La red solo se usa si el opt-in está ON (último recurso).
+    // Claves que fuerzan re-resolver: pista, carpetas concedidas, ajuste de red y la señal de borrado
+    // de caché (para que al borrar la letra descargada la UI deje de mostrarla).
+    private data class LyricsKey(
+        val mediaId: String?,
+        val folders: Set<android.net.Uri>,
+        val net: Boolean,
+        val cacheInvalidation: Int,
+    )
+
     @OptIn(ExperimentalCoroutinesApi::class)
     private val loadedLyrics: Flow<LyricsLoad> =
         combine(
             playback.state.map { it.mediaId }.distinctUntilChanged(),
             lyrics.grantedFolders.distinctUntilChanged(),
             settings.internetLyrics.distinctUntilChanged(),
-        ) { mediaId, folders, net -> Triple(mediaId, folders, net) }
+            lyrics.cacheInvalidations,
+        ) { mediaId, folders, net, inv -> LyricsKey(mediaId, folders, net, inv) }
             .distinctUntilChanged()
-            .transformLatest { (mediaId, _, net) ->
+            .transformLatest { key ->
                 emit(LyricsLoad(loading = true, resolution = null, request = null))
-                val song = songFor(mediaId)
+                val song = songFor(key.mediaId)
                 if (song == null) {
                     emit(LyricsLoad(false, LyricsResolution.NotFound, null))
                     return@transformLatest
                 }
-                val res = lyrics.resolve(song, allowNetwork = net)
+                val res = lyrics.resolve(song, allowNetwork = key.net)
                 val request = if (res is LyricsResolution.NotFound) lyrics.folderRequestFor(song) else null
                 emit(LyricsLoad(false, res, request))
             }
