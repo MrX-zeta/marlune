@@ -111,6 +111,7 @@ class MediaStoreAudioSource(context: Context) {
             MediaStore.Audio.Media.TRACK,
             MediaStore.Audio.Media.YEAR,
             MediaStore.Audio.Media.DATE_ADDED,
+            MediaStore.Audio.Media.DISPLAY_NAME,
         )
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
@@ -127,6 +128,7 @@ class MediaStoreAudioSource(context: Context) {
             val trackCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TRACK)
             val yearCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
             val dateAddedCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+            val displayNameCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DISPLAY_NAME)
 
             while (cursor.moveToNext()) {
                 val id = cursor.getLong(idCol)
@@ -143,6 +145,7 @@ class MediaStoreAudioSource(context: Context) {
                     year = cursor.getInt(yearCol),
                     genre = genres[id],
                     dateAdded = cursor.getLong(dateAddedCol),
+                    displayName = cursor.getString(displayNameCol).orEmpty(),
                     contentUri = ContentUris.withAppendedId(audioCollection, id),
                     artworkUri = ContentUris.withAppendedId(albumArtCollection, albumId),
                 )

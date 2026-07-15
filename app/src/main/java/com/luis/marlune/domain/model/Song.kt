@@ -22,6 +22,8 @@ data class Song(
     val genre: String?,
     /** `DATE_ADDED` de MediaStore (segundos epoch). Ordena "recién añadidas" hasta que exista historial. */
     val dateAdded: Long,
+    /** `DISPLAY_NAME` de MediaStore (nombre de archivo, p. ej. "cancion.mp3"). Casa el `.lrc` sidecar. */
+    val displayName: String,
     val contentUri: Uri,
     val artworkUri: Uri?,
 )

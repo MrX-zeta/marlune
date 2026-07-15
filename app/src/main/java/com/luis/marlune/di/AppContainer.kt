@@ -3,10 +3,12 @@ package com.luis.marlune.di
 import android.content.Context
 import androidx.room.Room
 import com.luis.marlune.data.database.MarluneDatabase
+import com.luis.marlune.data.datastore.LyricsFolderStore
 import com.luis.marlune.data.datastore.SessionStore
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
+import com.luis.marlune.data.repository.LyricsRepository
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.data.repository.PlaylistRepository
 import com.luis.marlune.data.repository.SavedSessionRepository
@@ -59,6 +61,11 @@ class AppContainer(context: Context) {
 
     /** Sesión de reproducción persistida (DataStore) resuelta contra la biblioteca. */
     val savedSessionRepository: SavedSessionRepository = SavedSessionRepository(sessionStore, musicRepository)
+
+    private val lyricsFolderStore = LyricsFolderStore(context.applicationContext)
+
+    /** Letras locales (.lrc por SAF; tags embebidos en Fase 2). Lectura/parseo en IO, cacheado. */
+    val lyricsRepository: LyricsRepository = LyricsRepository(context.applicationContext, lyricsFolderStore)
 
     init {
         recordPlaysToHistory()

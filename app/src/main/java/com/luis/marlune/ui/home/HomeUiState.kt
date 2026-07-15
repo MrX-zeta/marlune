@@ -53,6 +53,7 @@ data class HomeUiState(
             year = 2024,
             genre = null,
             dateAdded = id,
+            displayName = "$title.mp3",
             contentUri = Uri.EMPTY,
             artworkUri = null,
         )
