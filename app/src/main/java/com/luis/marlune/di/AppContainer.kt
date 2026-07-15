@@ -3,6 +3,7 @@ package com.luis.marlune.di
 import android.content.Context
 import androidx.room.Room
 import com.luis.marlune.data.database.MarluneDatabase
+import com.luis.marlune.data.datastore.LibrarySortStore
 import com.luis.marlune.data.datastore.LyricsFolderStore
 import com.luis.marlune.data.datastore.SessionStore
 import com.luis.marlune.data.datastore.SettingsStore
@@ -69,6 +70,9 @@ class AppContainer(context: Context) {
 
     /** Ajustes de la app (opt-in de letras por internet, off por defecto). */
     val settingsStore = SettingsStore(context.applicationContext)
+
+    /** Preferencias de Biblioteca (orden de Canciones), persistidas entre sesiones. */
+    val librarySortStore = LibrarySortStore(context.applicationContext)
 
     /**
      * Letras: local (.lrc por SAF) y, SOLO si el usuario activa el opt-in, red (LRCLIB) como último

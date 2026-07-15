@@ -53,6 +53,10 @@ interface PlaylistDao {
     @Query("DELETE FROM playlist_songs WHERE playlist_id = :playlistId AND song_id = :songId")
     suspend fun removeSong(playlistId: Long, songId: Long)
 
+    /** Quita la canción de TODAS las listas (al borrar su archivo del dispositivo). */
+    @Query("DELETE FROM playlist_songs WHERE song_id = :songId")
+    suspend fun removeSongEverywhere(songId: Long)
+
     /** Ids de las canciones de la lista, en el ORDEN en que se añadieron. */
     @Query("SELECT song_id FROM playlist_songs WHERE playlist_id = :playlistId ORDER BY position ASC")
     fun songIds(playlistId: Long): Flow<List<Long>>

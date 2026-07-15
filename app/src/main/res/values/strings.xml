@@ -105,6 +105,16 @@
     <string name="library_menu_play">Reproducir</string>
     <string name="library_menu_add_queue">Añadir a la cola</string>
     <string name="library_menu_add_playlist">Añadir a una lista</string>
+    <string name="library_queued">Añadida a la cola</string>
+    <string name="library_sort_title">Título (A-Z)</string>
+    <string name="library_sort_artist">Artista</string>
+    <string name="library_sort_album">Álbum</string>
+    <string name="library_sort_date">Fecha de agregado</string>
+    <string name="library_sort_duration">Duración</string>
+    <string name="library_menu_delete">Borrar del dispositivo</string>
+    <string name="library_delete_confirm_title">¿Borrar esta canción del dispositivo?</string>
+    <string name="library_delete_confirm_body">Esta acción no se puede deshacer. Se borrará el archivo del dispositivo, no solo se quitará de Marlune.</string>
+    <string name="library_delete_failed">No se pudo borrar la canción</string>
     <string name="library_empty_title">Tu biblioteca está vacía</string>
     <string name="library_empty_hint">Añade música local y desliza hacia abajo para actualizar.</string>
 

@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
+import com.luis.marlune.data.datastore.LibrarySortStore
+import com.luis.marlune.data.mediastore.MediaStoreAudioSource.DeleteOutcome
+import com.luis.marlune.data.repository.FavoritesRepository
+import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.data.repository.PlaylistRepository
@@ -22,6 +26,7 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel de Biblioteca: proyecta la biblioteca LOCAL real ([MusicRepository]) por categoría.
@@ -35,13 +40,27 @@ class LibraryViewModel(
     private val repository: MusicRepository,
     private val playback: PlaybackRepository,
     private val playlists: PlaylistRepository,
+    private val favorites: FavoritesRepository,
+    private val history: HistoryRepository,
+    private val sortStore: LibrarySortStore,
 ) : ViewModel() {
 
     private val refreshing = MutableStateFlow(false)
 
-    /** Entradas por categoría, precalculadas fuera del hilo principal y memorizadas. */
+    /** Orden activo de Canciones (persistido). La UI lo lee para marcar la opción y para el menú. */
+    val sort: StateFlow<LibrarySort> =
+        sortStore.sortKey
+            .map { LibrarySort.fromKey(it) }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibrarySort.Default)
+
+    /**
+     * Entradas por categoría + la lista de Canciones YA ordenada, precalculadas fuera del hilo
+     * principal. La misma lista ordenada alimenta la UI y la cola de reproducción, para que "Reproducir"
+     * respete el orden mostrado.
+     */
     private data class Entries(
         val byFilter: Map<LibraryFilter, List<LibraryEntry>>,
+        val sortedSongs: List<Song>,
         val isLoading: Boolean,
     )
 
@@ -51,23 +70,31 @@ class LibraryViewModel(
             repository.albums,
             repository.artists,
             playlists.playlists,
-        ) { library, albums, artists, playlists ->
-            val songs = (library as? LibraryState.Content)?.songs.orEmpty()
+            sort,
+        ) { library, albums, artists, playlists, sort ->
+            val rawSongs = (library as? LibraryState.Content)?.songs.orEmpty()
+            val sortedSongs = sort.sortSongs(rawSongs)
             Entries(
                 byFilter = mapOf(
                     LibraryFilter.PLAYLISTS to playlists.map { it.toEntry() },
                     LibraryFilter.ALBUMS to albums.map { it.toEntry() },
                     LibraryFilter.ARTISTS to artists.map { it.toEntry() },
-                    LibraryFilter.SONGS to songs.map { it.toEntry() },
+                    LibraryFilter.SONGS to sortedSongs.map { it.toEntry() },
                 ),
+                sortedSongs = sortedSongs,
                 isLoading = library is LibraryState.Loading,
             )
-        }.flowOn(Dispatchers.Default) // agrupación + mapeo a UI fuera del hilo principal
+        }.flowOn(Dispatchers.Default) // agrupación + orden + mapeo a UI fuera del hilo principal
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
-                initialValue = Entries(emptyMap(), isLoading = true),
+                initialValue = Entries(emptyMap(), emptyList(), isLoading = true),
             )
+
+    /** Cambia el orden de Canciones y lo persiste; el recálculo ocurre en el flujo `entries`. */
+    fun setSort(sort: LibrarySort) {
+        viewModelScope.launch { sortStore.setSortKey(sort.name) }
+    }
 
     // El mapa ya está precalculado; solo se re-empaqueta con el flag de refresco (barato). El chip
     // seleccionado lo maneja la UI, así que cambiarlo no toca este flujo ni recalcula nada.
@@ -99,9 +126,58 @@ class LibraryViewModel(
      * el mismo orden mostrado) y empieza en su posición. Lectura directa de la caché ya cargada.
      */
     fun playSongEntry(entryId: Long) {
-        val songs = (repository.library.value as? LibraryState.Content)?.songs ?: return
+        val songs = entries.value.sortedSongs
         val index = songs.indexOfFirst { it.id == entryId }
         if (index >= 0) playback.playSongs(songs, index)
+    }
+
+    /**
+     * Encola la canción tocada justo después de la actual (sin interrumpir la reproducción); si no hay
+     * nada sonando, inicia con ella. Lee la canción de la caché ya cargada, sin re-consultar MediaStore.
+     */
+    fun addSongToQueue(entryId: Long) {
+        val song = entries.value.sortedSongs.firstOrNull { it.id == entryId } ?: return
+        playback.addToQueueNext(song)
+    }
+
+    // --- Borrado del archivo del dispositivo (solo desde el menú de 3 puntos, con confirmación) ---
+
+    /**
+     * Inicia el borrado del archivo. Devuelve el desenlace para que la UI lance la confirmación del
+     * SISTEMA ([DeleteOutcome.NeedsConsent]) o finalice si ya se borró ([DeleteOutcome.Deleted]).
+     */
+    fun beginDelete(entryId: Long): DeleteOutcome = repository.beginDelete(entryId)
+
+    /**
+     * Borrado ya efectivo sin paso de consentimiento posterior (ruta directa en API < 29): limpia las
+     * referencias y ajusta la reproducción. La biblioteca se refresca sola (ContentObserver).
+     */
+    fun onSongDeleted(entryId: Long) {
+        playback.removeFromQueue(entryId)
+        cleanupOrphans(entryId)
+    }
+
+    /**
+     * Completa el borrado tras el consentimiento del usuario: ejecuta el borrado real donde aplica
+     * (API 29), limpia referencias huérfanas en Room y saca la pista de la cola.
+     */
+    fun completeDelete(entryId: Long) {
+        playback.removeFromQueue(entryId)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { repository.completeDelete(entryId) }
+            removeReferences(entryId)
+        }
+    }
+
+    /** Limpia en segundo plano las referencias huérfanas (favoritos, listas, historial). Silencioso. */
+    private fun cleanupOrphans(entryId: Long) {
+        viewModelScope.launch { removeReferences(entryId) }
+    }
+
+    private suspend fun removeReferences(entryId: Long) {
+        favorites.removeReference(entryId)
+        playlists.removeSongEverywhere(entryId)
+        history.removeReference(entryId)
     }
 
     // --- Gestión de listas (crear/renombrar/borrar; las canciones van en el siguiente sub-paso). ---
@@ -155,7 +231,14 @@ class LibraryViewModel(
             repository: MusicRepository,
             playback: PlaybackRepository,
             playlists: PlaylistRepository,
+            favorites: FavoritesRepository,
+            history: HistoryRepository,
+            sortStore: LibrarySortStore,
         ): androidx.lifecycle.ViewModelProvider.Factory =
-            viewModelFactory { initializer { LibraryViewModel(repository, playback, playlists) } }
+            viewModelFactory {
+                initializer {
+                    LibraryViewModel(repository, playback, playlists, favorites, history, sortStore)
+                }
+            }
     }
 }

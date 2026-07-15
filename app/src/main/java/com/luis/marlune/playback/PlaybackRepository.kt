@@ -157,6 +157,40 @@ class PlaybackRepository(context: Context) {
         }
     }
 
+    /**
+     * Encola [song] JUSTO DESPUÉS de la pista actual, sin interrumpir lo que suena (inserta en la cola
+     * del `MediaController`). Si no hay nada en la cola, inicia la reproducción con esa canción. Si el
+     * controlador aún no está conectado, la acción queda pendiente y se ejecuta al conectar.
+     */
+    fun addToQueueNext(song: Song) {
+        runOrQueue { c ->
+            if (c.mediaItemCount == 0) {
+                c.setMediaItem(song.toMediaItem())
+                c.prepare()
+                c.play()
+            } else {
+                val insertIndex = (c.currentMediaItemIndex + 1).coerceAtMost(c.mediaItemCount)
+                c.addMediaItem(insertIndex, song.toMediaItem())
+            }
+        }
+    }
+
+    /**
+     * Quita de la cola la canción con este `_ID` (p. ej. al borrar su archivo). Si era la que sonaba,
+     * ExoPlayer pasa a la siguiente automáticamente; si era la última, la reproducción se detiene con
+     * gracia. Hilo principal. No hace nada si no está en la cola o el controlador no está listo.
+     */
+    fun removeFromQueue(songId: Long) {
+        val c = controller ?: return
+        val target = songId.toString()
+        for (i in 0 until c.mediaItemCount) {
+            if (c.getMediaItemAt(i).mediaId == target) {
+                c.removeMediaItem(i)
+                return
+            }
+        }
+    }
+
     fun playPause() = controller?.let { if (it.isPlaying) it.pause() else it.play() }
 
     fun next() {

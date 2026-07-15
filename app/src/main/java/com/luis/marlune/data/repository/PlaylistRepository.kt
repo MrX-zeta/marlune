@@ -50,6 +50,9 @@ class PlaylistRepository(
 
     suspend fun removeSong(playlistId: Long, songId: Long) = dao.removeSong(playlistId, songId)
 
+    /** Quita la canción de todas las listas (limpieza silenciosa al borrar su archivo). */
+    suspend fun removeSongEverywhere(songId: Long) = dao.removeSongEverywhere(songId)
+
     /** Crea una lista y le añade la canción en un solo paso; devuelve el id de la lista nueva. */
     suspend fun createAndAdd(name: String, songId: Long): Long {
         val id = create(name)

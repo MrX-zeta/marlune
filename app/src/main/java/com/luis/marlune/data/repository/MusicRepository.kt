@@ -88,6 +88,12 @@ class MusicRepository(
         source.requestRefresh()
     }
 
+    /** Inicia el borrado del archivo de una canción (el sistema pide confirmación). Ver [MediaStoreAudioSource.beginDelete]. */
+    fun beginDelete(songId: Long): MediaStoreAudioSource.DeleteOutcome = source.beginDelete(songId)
+
+    /** Completa el borrado tras el consentimiento del usuario (borra en API 29 y re-consulta). */
+    fun completeDelete(songId: Long) = source.completeDeleteAfterConsent(songId)
+
     /** Escaneo manual (red de seguridad): revisa directorios públicos y re-consulta. Suspende. */
     suspend fun rescan() {
         source.rescanPublicMedia()

@@ -1,7 +1,9 @@
 package com.luis.marlune.data.mediastore
 
+import android.app.RecoverableSecurityException
 import android.content.ContentUris
 import android.content.Context
+import android.content.IntentSender
 import android.database.ContentObserver
 import android.media.MediaScannerConnection
 import android.net.Uri
@@ -66,6 +68,55 @@ class MediaStoreAudioSource(context: Context) {
     /** Fuerza una re-consulta de MediaStore sin esperar a un cambio del sistema. */
     fun requestRefresh() {
         manualRefresh.tryEmit(Unit)
+    }
+
+    /**
+     * Resultado de iniciar el borrado de un archivo. El sistema exige confirmación del USUARIO
+     * (nunca borramos en silencio): [NeedsConsent] entrega el `IntentSender` que la UI debe lanzar;
+     * [Deleted], que el archivo ya se borró (ruta directa en API < 29); [Failed], un error irrecuperable.
+     */
+    sealed interface DeleteOutcome {
+        data class NeedsConsent(val intentSender: IntentSender) : DeleteOutcome
+        data object Deleted : DeleteOutcome
+        data object Failed : DeleteOutcome
+    }
+
+    /**
+     * Inicia el borrado del ARCHIVO de una canción. En API 30+ el sistema siempre pide confirmación
+     * (`createDeleteRequest`); en API 29 se intenta borrar y, ante `RecoverableSecurityException`, se
+     * pide confirmación; en API 28 se borra directamente (best-effort). Nunca borra en silencio en
+     * las versiones modernas. No lanza: los fallos se devuelven como [DeleteOutcome.Failed].
+     */
+    fun beginDelete(songId: Long): DeleteOutcome {
+        val uri = ContentUris.withAppendedId(audioCollection, songId)
+        return runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                // Android 11+: el propio sistema confirma y borra al aprobar.
+                val pending = MediaStore.createDeleteRequest(resolver, listOf(uri))
+                DeleteOutcome.NeedsConsent(pending.intentSender)
+            } else {
+                try {
+                    resolver.delete(uri, null, null)
+                    requestRefresh()
+                    DeleteOutcome.Deleted
+                } catch (security: RecoverableSecurityException) {
+                    // Android 10 (API 29): el sistema ofrece un consentimiento recuperable.
+                    DeleteOutcome.NeedsConsent(security.userAction.actionIntent.intentSender)
+                }
+            }
+        }.getOrDefault(DeleteOutcome.Failed)
+    }
+
+    /**
+     * Completa el borrado tras el consentimiento del usuario. En API 30+ el sistema ya borró el
+     * archivo (solo re-consultamos); en API 29 hay que ejecutar el borrado real ahora. Best-effort.
+     */
+    fun completeDeleteAfterConsent(songId: Long) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+            val uri = ContentUris.withAppendedId(audioCollection, songId)
+            runCatching { resolver.delete(uri, null, null) }
+        }
+        requestRefresh()
     }
 
     /**

@@ -27,6 +27,9 @@ class FavoritesRepository(
             favorites.mapNotNull { byId[it.songId] }
         }
 
+    /** Elimina la referencia de una pista (limpieza silenciosa al borrar su archivo). */
+    suspend fun removeReference(songId: Long) = dao.remove(songId)
+
     /** Alterna el favorito de una pista, persistiéndolo. */
     suspend fun toggle(songId: Long) {
         if (dao.isFavorite(songId)) {

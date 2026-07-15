@@ -20,4 +20,8 @@ interface PlayHistoryDao {
     /** Snapshot completo (para sesgar el Mix hacia las menos escuchadas). */
     @Query("SELECT * FROM play_history")
     suspend fun all(): List<PlayHistoryEntity>
+
+    /** Elimina la referencia de una pista (p. ej. al borrar su archivo del dispositivo). */
+    @Query("DELETE FROM play_history WHERE songId = :songId")
+    suspend fun delete(songId: Long)
 }

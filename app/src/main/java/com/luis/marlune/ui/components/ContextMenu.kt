@@ -9,11 +9,16 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,9 +35,14 @@ import androidx.compose.ui.window.PopupProperties
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 
-/** Acción de un menú contextual: etiqueta (recurso) + callback. */
+/**
+ * Acción de un menú contextual: etiqueta (recurso) + callback. [selected] marca la opción activa
+ * (p. ej. el orden vigente): se tiñe con el acento y muestra un check. Por defecto `false`, así los
+ * menús de acciones no cambian.
+ */
 data class ContextMenuItem(
     val labelRes: Int,
+    val selected: Boolean = false,
     val onClick: () -> Unit,
 )
 
@@ -89,10 +99,7 @@ fun ContextMenu(
                 ) {
                     Column(modifier = Modifier.width(220.dp)) {
                         items.forEach { item ->
-                            Text(
-                                text = stringResource(item.labelRes),
-                                style = MarluneTheme.typography.bodyLarge,
-                                color = MarluneTheme.colors.textPrimary,
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
@@ -101,7 +108,23 @@ fun ContextMenu(
                                     }
                                     .heightIn(min = 48.dp)
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                            )
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    text = stringResource(item.labelRes),
+                                    style = MarluneTheme.typography.bodyLarge,
+                                    color = if (item.selected) MarluneTheme.colors.accent else MarluneTheme.colors.textPrimary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (item.selected) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        tint = MarluneTheme.colors.accent,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                }
+                            }
                         }
                     }
                 }

@@ -29,6 +29,9 @@ class HistoryRepository(
         dao.upsert(PlayHistoryEntity(songId = songId, lastPlayedAt = System.currentTimeMillis()))
     }
 
+    /** Elimina la referencia de una pista (limpieza silenciosa al borrar su archivo). */
+    suspend fun removeReference(songId: Long) = dao.delete(songId)
+
     /**
      * Última reproducción por pista (`_ID` → timestamp). Las pistas ausentes nunca se han
      * reproducido; sirve para sesgar el Mix hacia las menos escuchadas.

@@ -1,6 +1,12 @@
 package com.luis.marlune.ui.library
 
+import android.app.Activity
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,12 +21,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.LibraryMusic
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +39,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -38,9 +47,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.luis.marlune.R
+import com.luis.marlune.data.mediastore.MediaStoreAudioSource.DeleteOutcome
+import com.luis.marlune.di.rememberFavoritesRepository
+import com.luis.marlune.di.rememberHistoryRepository
+import com.luis.marlune.di.rememberLibrarySortStore
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
 import com.luis.marlune.di.rememberPlaylistRepository
+import com.luis.marlune.ui.components.ContextMenu
 import com.luis.marlune.ui.components.ContextMenuItem
 import com.luis.marlune.ui.components.EmptyState
 import com.luis.marlune.ui.components.LoadingRows
@@ -65,18 +79,28 @@ fun LibraryRoute(
             rememberMusicRepository(),
             rememberPlaybackRepository(),
             rememberPlaylistRepository(),
+            rememberFavoritesRepository(),
+            rememberHistoryRepository(),
+            rememberLibrarySortStore(),
         ),
     ),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val nowPlaying by viewModel.nowPlaying.collectAsStateWithLifecycle()
+    val sort by viewModel.sort.collectAsStateWithLifecycle()
     LibraryScreen(
         uiState = uiState,
         nowPlaying = nowPlaying,
+        currentSort = sort,
+        onSelectSort = viewModel::setSort,
         contentPadding = contentPadding,
         onRefresh = viewModel::onRefresh,
         // Tocar una canción reproduce la COLA real; el mini-player aparece con esa pista al sonar.
         onPlaySong = viewModel::playSongEntry,
+        onAddToQueue = viewModel::addSongToQueue,
+        onBeginDelete = viewModel::beginDelete,
+        onSongDeleted = viewModel::onSongDeleted,
+        onCompleteDelete = viewModel::completeDelete,
         onOpenAlbum = onOpenAlbum,
         onOpenArtist = onOpenArtist,
         onOpenPlaylist = onOpenPlaylist,
@@ -101,9 +125,15 @@ fun LibraryRoute(
 fun LibraryScreen(
     uiState: LibraryUiState,
     nowPlaying: NowPlayingUi,
+    currentSort: LibrarySort,
+    onSelectSort: (LibrarySort) -> Unit,
     contentPadding: PaddingValues,
     onRefresh: () -> Unit,
     onPlaySong: (Long) -> Unit,
+    onAddToQueue: (Long) -> Unit,
+    onBeginDelete: (Long) -> DeleteOutcome,
+    onSongDeleted: (Long) -> Unit,
+    onCompleteDelete: (Long) -> Unit,
     onOpenAlbum: (Long) -> Unit,
     onOpenArtist: (Long) -> Unit,
     onOpenPlaylist: (Long) -> Unit,
@@ -147,7 +177,7 @@ fun LibraryScreen(
                 .padding(top = contentPadding.calculateTopPadding())
                 .padding(horizontal = 20.dp),
         ) {
-            LibraryTopBar()
+            LibraryTopBar(currentSort = currentSort, onSelectSort = onSelectSort)
             LibraryFilterChips(
                 selected = selectedFilter,
                 onSelect = { selectedFilter = it },
@@ -184,6 +214,10 @@ fun LibraryScreen(
                         nowPlaying = nowPlaying,
                         bottomPadding = listBottomPadding,
                         onEntryClick = onEntryClick,
+                        onAddToQueue = onAddToQueue,
+                        onBeginDelete = onBeginDelete,
+                        onSongDeleted = onSongDeleted,
+                        onCompleteDelete = onCompleteDelete,
                     )
                 }
             }
@@ -200,16 +234,35 @@ private fun LibraryList(
     nowPlaying: NowPlayingUi,
     bottomPadding: Dp,
     onEntryClick: (LibraryEntry) -> Unit,
+    onAddToQueue: (Long) -> Unit,
+    onBeginDelete: (Long) -> DeleteOutcome,
+    onSongDeleted: (Long) -> Unit,
+    onCompleteDelete: (Long) -> Unit,
 ) {
     // Solo se resalta en "Canciones" (los ids de álbum/artista viven en otro espacio de ids).
     val highlightId = if (filter == LibraryFilter.SONGS) nowPlaying.songId else null
     val isArtist = filter == LibraryFilter.ARTISTS
     val coverShape = if (filter == LibraryFilter.PLAYLISTS || isArtist) CircleCover else RoundedCover
     val coverIcon = coverIconFor(isArtist)
-    // "Añadir a lista" solo en Canciones (el id de la fila es el _ID de la pista). El selector se
-    // hospeda aquí; álbumes/artistas no llevan menú.
-    val addToPlaylist = filter == LibraryFilter.SONGS
+    // El menú de 3 puntos solo en Canciones (el id de la fila es el _ID de la pista); álbumes/artistas
+    // no llevan menú. El selector "Añadir a lista" se hospeda aquí.
+    val songMenu = filter == LibraryFilter.SONGS
     var addTarget by remember { mutableStateOf<Long?>(null) }
+    // Confirmación discreta de "Añadir a la cola" (Reproducir ya se confirma solo: aparece el mini-player).
+    val context = LocalContext.current
+
+    // Borrado del archivo: nuestra confirmación primero (deleteTarget) y, al aceptar, la del SISTEMA.
+    // `pendingConsentId` recuerda la pista mientras el sistema pide su confirmación (IntentSender).
+    var deleteTarget by remember { mutableStateOf<LibraryEntry?>(null) }
+    var pendingConsentId by remember { mutableStateOf<Long?>(null) }
+    val deleteLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult(),
+    ) { result ->
+        val id = pendingConsentId
+        pendingConsentId = null
+        // Solo si el usuario aprobó en el sistema; si canceló, no se hace nada (UI ya limpia).
+        if (id != null && result.resultCode == Activity.RESULT_OK) onCompleteDelete(id)
+    }
 
     // LazyColumn persistente: solo compone (y pide carátula a Coil) las filas VISIBLES; keys estables
     // por id + `contentType` único para reciclar slots al cambiar de chip (sin recargar arte). El
@@ -241,8 +294,20 @@ private fun LibraryList(
                         coverIcon = coverIcon,
                         coverShape = coverShape,
                         onClick = { onEntryClick(entry) },
-                        menuItems = if (addToPlaylist) {
-                            listOf(ContextMenuItem(R.string.menu_add_to_playlist) { addTarget = entry.id })
+                        menuItems = if (songMenu) {
+                            songMenuItems(
+                                onPlay = { onEntryClick(entry) },
+                                onQueue = {
+                                    onAddToQueue(entry.id)
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.library_queued),
+                                        Toast.LENGTH_SHORT,
+                                    ).show()
+                                },
+                                onAddToPlaylist = { addTarget = entry.id },
+                                onDelete = { deleteTarget = entry },
+                            )
                         } else {
                             emptyList()
                         },
@@ -257,14 +322,75 @@ private fun LibraryList(
     addTarget?.let { songId ->
         AddToPlaylistSheet(songId = songId, onDismiss = { addTarget = null })
     }
+
+    // Confirmación propia (destructiva) ANTES de lanzar la del sistema: deja claro que borra el ARCHIVO.
+    deleteTarget?.let { target ->
+        ConfirmDeleteSongDialog(
+            onConfirm = {
+                deleteTarget = null
+                when (val outcome = onBeginDelete(target.id)) {
+                    is DeleteOutcome.NeedsConsent -> {
+                        pendingConsentId = target.id
+                        deleteLauncher.launch(IntentSenderRequest.Builder(outcome.intentSender).build())
+                    }
+                    DeleteOutcome.Deleted -> onSongDeleted(target.id) // ruta directa (API < 29)
+                    DeleteOutcome.Failed -> Toast.makeText(
+                        context,
+                        context.getString(R.string.library_delete_failed),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+            onDismiss = { deleteTarget = null },
+        )
+    }
 }
+
+/** Confirmación propia del borrado de archivo: copy destructivo explícito, sin bloquear. */
+@Composable
+private fun ConfirmDeleteSongDialog(
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.library_delete_confirm_title)) },
+        text = { Text(stringResource(R.string.library_delete_confirm_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) { Text(stringResource(R.string.action_delete)) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.action_cancel)) }
+        },
+    )
+}
+
+/**
+ * Acciones del menú de 3 puntos de una canción, en orden: Reproducir · Añadir a la cola · Añadir a
+ * lista · Borrar del dispositivo (destructiva, al final). Reemplaza al antiguo menú placeholder.
+ */
+private fun songMenuItems(
+    onPlay: () -> Unit,
+    onQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
+    onDelete: () -> Unit,
+): List<ContextMenuItem> = listOf(
+    ContextMenuItem(R.string.library_menu_play, onClick = onPlay),
+    ContextMenuItem(R.string.library_menu_add_queue, onClick = onQueue),
+    ContextMenuItem(R.string.menu_add_to_playlist, onClick = onAddToPlaylist),
+    ContextMenuItem(R.string.library_menu_delete, onClick = onDelete),
+)
 
 /** Filas que reciben la entrada escalonada: cubre toda la primera pantalla (~10 filas visibles);
  *  el resto entra instantáneo por scroll, sin re-animar, para que el desplazamiento siga fluido. */
 private const val StaggerVisibleCount = 10
 
 @Composable
-private fun LibraryTopBar() {
+private fun LibraryTopBar(
+    currentSort: LibrarySort,
+    onSelectSort: (LibrarySort) -> Unit,
+) {
+    var sortMenuOpen by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -277,12 +403,26 @@ private fun LibraryTopBar() {
             color = MarluneTheme.colors.textPrimary,
             modifier = Modifier.weight(1f),
         )
-        // Se conserva el filtro; se eliminó la lupa (la búsqueda vive en su pestaña).
-        IconButton(onClick = { /* Filtro/orden: acción en tarea posterior */ }) {
-            Icon(
-                imageVector = Icons.Rounded.FilterList,
-                contentDescription = stringResource(R.string.library_filter),
-                tint = MarluneTheme.colors.textPrimary,
+        // Botón de orden: abre un menú (reutiliza ContextMenu; enter Material desde la esquina) con la
+        // opción activa marcada. El orden se aplica a Canciones y se persiste (DataStore).
+        Box {
+            IconButton(onClick = { sortMenuOpen = true }) {
+                Icon(
+                    imageVector = Icons.Rounded.FilterList,
+                    contentDescription = stringResource(R.string.library_filter),
+                    tint = MarluneTheme.colors.textPrimary,
+                )
+            }
+            ContextMenu(
+                expanded = sortMenuOpen,
+                onDismissRequest = { sortMenuOpen = false },
+                items = LibrarySort.entries.map { option ->
+                    ContextMenuItem(
+                        labelRes = option.labelRes,
+                        selected = option == currentSort,
+                        onClick = { onSelectSort(option) },
+                    )
+                },
             )
         }
     }
@@ -303,9 +443,15 @@ private fun LibraryScreenPreview() {
                 ),
             ),
             nowPlaying = NowPlayingUi(songId = 102L, isPlaying = true),
+            currentSort = LibrarySort.TITLE,
+            onSelectSort = {},
             contentPadding = PaddingValues(0.dp),
             onRefresh = {},
             onPlaySong = {},
+            onAddToQueue = {},
+            onBeginDelete = { DeleteOutcome.Failed },
+            onSongDeleted = {},
+            onCompleteDelete = {},
             onOpenAlbum = {},
             onOpenArtist = {},
             onOpenPlaylist = {},
