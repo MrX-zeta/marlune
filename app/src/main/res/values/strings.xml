@@ -67,6 +67,8 @@
     <string name="lyrics_service_error">No se pudo obtener la letra ahora mismo.</string>
     <string name="lyrics_search_online">Buscar letras en internet</string>
     <string name="settings_title">Ajustes</string>
+    <string name="settings_subtitle">Personaliza tu experiencia</string>
+    <string name="settings_close">Cerrar</string>
     <string name="settings_lyrics_section">Letras</string>
     <string name="settings_internet_lyrics">Buscar letras en internet</string>
     <string name="settings_internet_lyrics_desc">Envía el título y artista de la canción a un servicio de letras (LRCLIB). Desactivado, Marlune no se conecta a internet.</string>
