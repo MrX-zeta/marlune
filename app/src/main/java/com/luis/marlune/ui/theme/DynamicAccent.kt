@@ -76,6 +76,13 @@ private fun accentFromBitmap(bitmap: Bitmap): Color? {
 }
 
 /**
+ * Extractor de acento REUTILIZABLE (p. ej. por el widget): mismo algoritmo y resultado que el acento
+ * dinámico de la app. Recibe una carátula (idealmente ya reducida) y devuelve el acento normalizado, o
+ * `null` si es monocroma. Solo EXPONE la lógica existente; no cambia el comportamiento de la app.
+ */
+fun accentFromArtwork(bitmap: Bitmap): Color? = accentFromBitmap(bitmap)
+
+/**
  * Sube saturación/luminosidad mínimas para que un color con saturación REAL rinda como acento sobre
  * el neutro oscuro, y lo mezcla un poco con la marca para mantener la coherencia. NO se llama con
  * colores monocromos (esos se filtran antes, en [accentFromBitmap]).

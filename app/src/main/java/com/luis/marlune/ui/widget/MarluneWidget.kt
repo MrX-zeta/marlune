@@ -5,7 +5,6 @@ import android.graphics.Bitmap
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -53,38 +52,29 @@ private val Bg = Color(0xFF0A0910)
 private val TextPrimary = Color(0xFFF3F1F8)
 private val TextSecondary = Color(0xFFABA6BC)
 private val TextTertiary = Color(0xFF7C7791)
-private val Accent = Color(0xFF8E7DF0)
+private val Accent = Color(0xFF8E7DF0) // acento de marca (fallback del play/pausa)
 private val AccentVivid = Color(0xFFA99BFF)
-private val Marea = Color(0xFF6FD8C6)
-private val Track = Color(0xFF3A3357)
 
 private fun fixed(color: Color) = ColorProvider(color)
 
 private val TitleStyle = TextStyle(color = ColorProvider(TextPrimary), fontSize = 14.sp, fontWeight = FontWeight.Medium)
 private val ArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSize = 12.sp, fontWeight = FontWeight.Normal)
 
-/** Altura (real) a partir de la cual se muestra el layout completo (con marea y más controles). */
+/** Altura (real) a partir de la cual se muestra el layout completo (carátula grande + texto + controles). */
 private val FullThreshold = 110.dp
 
 /** Padding horizontal del contenido completo (por lado). También el margen mínimo controles↔borde. */
 private const val FULL_HPAD = 12f
 
 /**
- * MAREA con onda (bitmap). Ahora que el servicio EMPUJA `updateAll` (RemoteViews nuevo) en cada cambio,
- * MIUI repinta la imagen. Si en algún launcher siguiera sin repintar, poner a `false`: degrada a barra
- * nativa (dos Box) que se actualiza siempre.
- */
-private const val USE_TIDE_BITMAP = true
-
-/**
  * Widget de pantalla de inicio de Marlune con Jetpack Glance. Lee el estado del [WidgetPlaybackBus]
  * (publicado por el servicio de reproducción), NO del `MediaController` de la UI: así no se congela al
- * cerrar la app ni sufre la latencia de reconexión. Las actualizaciones se empujan desde el servicio.
+ * cerrar la app. Se actualiza SOLO por eventos empujados desde el servicio (pista, play/pausa, shuffle,
+ * me gusta); no muestra progreso, así que no hay refrescos periódicos en reposo.
  */
 class MarluneWidget : GlanceAppWidget() {
 
-    // Exact: LocalSize entrega el tamaño REAL (no un bucket), necesario para el ancho real de la marea
-    // y para decidir cuántos controles caben sin recortes.
+    // Exact: LocalSize entrega el tamaño REAL (no un bucket), para decidir cuántos controles caben.
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
@@ -103,18 +93,20 @@ private fun WidgetContent(favorites: FavoritesRepository) {
         } else {
             val favoriteIds by favorites.favoriteIds.collectAsState(emptySet())
             val isFavorite = snapshot.mediaId?.toLongOrNull()?.let { it in favoriteIds } == true
+            // Acento dinámico de la carátula (extraído por el servicio); marca si es monocroma o no hay.
+            val accent = snapshot.accentArgb?.let { Color(it) } ?: Accent
             if (LocalSize.current.height >= FullThreshold) {
-                FullLayout(snapshot, isFavorite)
+                FullLayout(snapshot, isFavorite, accent)
             } else {
-                CompactLayout(snapshot)
+                CompactLayout(snapshot, accent)
             }
         }
     }
 }
 
-/** Layout A (~300x60): carátula · título/artista · anterior/play/siguiente. */
+/** Layout A (compacto): carátula · título/artista · anterior/play/siguiente. */
 @Composable
-private fun CompactLayout(s: WidgetPlaybackState) {
+private fun CompactLayout(s: WidgetPlaybackState, accent: Color) {
     val context = LocalContext.current
     val openNowPlaying = GlanceModifier.clickable(actionStartActivity(openAppIntent(context, nowPlaying = true)))
     Row(
@@ -133,7 +125,7 @@ private fun CompactLayout(s: WidgetPlaybackState) {
             actionRunCallback<WidgetPreviousAction>()
         }
         Spacer(GlanceModifier.width(8.dp))
-        PlayPauseButton(s.isPlaying, 56.dp)
+        PlayPauseButton(s.isPlaying, 56.dp, accent)
         Spacer(GlanceModifier.width(8.dp))
         ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 22.dp) {
             actionRunCallback<WidgetNextAction>()
@@ -141,9 +133,9 @@ private fun CompactLayout(s: WidgetPlaybackState) {
     }
 }
 
-/** Layout B (~300x110+): carátula · título/artista · marea · shuffle/anterior/play/siguiente/me gusta. */
+/** Layout B (completo): carátula grande · título/artista · fila de controles (shuffle…me gusta). */
 @Composable
-private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean) {
+private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
     val context = LocalContext.current
     val openNowPlaying = GlanceModifier.clickable(actionStartActivity(openAppIntent(context, nowPlaying = true)))
     val innerWidthDp = LocalSize.current.width.value - FULL_HPAD * 2f
@@ -152,18 +144,19 @@ private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean) {
     val showShuffleFav = innerWidthDp >= 280f
 
     Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = FULL_HPAD.dp, vertical = 8.dp)) {
-        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Artwork(s.artwork, size = 56.dp, corner = 10.dp, modifier = openNowPlaying)
-            Spacer(GlanceModifier.width(12.dp))
+        // Bloque superior (carátula grande + texto) toma el espacio libre y queda centrado: sin huecos raros.
+        Row(
+            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Artwork(s.artwork, size = 64.dp, corner = 12.dp, modifier = openNowPlaying)
+            Spacer(GlanceModifier.width(14.dp))
             Column(modifier = GlanceModifier.defaultWeight().then(openNowPlaying)) {
                 Text(s.title, maxLines = 1, style = TitleStyle)
                 Spacer(GlanceModifier.height(3.dp))
                 Text(s.artist, maxLines = 1, style = ArtistStyle)
             }
         }
-        Spacer(GlanceModifier.height(8.dp))
-        TideBar(bucketedFraction(s.positionMs, s.durationMs), innerWidthDp)
-        Spacer(GlanceModifier.height(6.dp))
         // Fila de controles repartida con defaultWeight: se adapta al ancho real, sin recortes.
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (showShuffleFav) {
@@ -180,7 +173,7 @@ private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean) {
                     actionRunCallback<WidgetPreviousAction>()
                 }
             }
-            WeightedControl { PlayPauseButton(s.isPlaying, 56.dp) }
+            WeightedControl { PlayPauseButton(s.isPlaying, 56.dp, accent) }
             WeightedControl {
                 ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
                     actionRunCallback<WidgetNextAction>()
@@ -224,48 +217,6 @@ private fun EmptyState() {
         )
         Spacer(GlanceModifier.height(8.dp))
         Text(context.getString(R.string.widget_empty), style = ArtistStyle)
-    }
-}
-
-/**
- * La MAREA. [fraction] ya viene muestreada a ~3 s por el servicio, así que el bitmap se regenera pocas
- * veces. Con onda por defecto; degrada a barra nativa si [USE_TIDE_BITMAP] es `false`.
- */
-@Composable
-private fun TideBar(fraction: Float, innerWidthDp: Float) {
-    if (USE_TIDE_BITMAP) {
-        val context = LocalContext.current
-        val density = context.resources.displayMetrics.density
-        val heightDp = 24f // igual que la marea de la app (deja hueco para el halo de 10 dp)
-        val wPx = (innerWidthDp * density).toInt().coerceIn(2, 4000)
-        val hPx = (heightDp * density).toInt().coerceAtLeast(2)
-        val bitmap: Bitmap = remember(fraction, wPx) { WidgetTide.render(wPx, hPx, density, fraction) }
-        Image(
-            provider = ImageProvider(bitmap),
-            contentDescription = null,
-            contentScale = ContentScale.FillBounds,
-            modifier = GlanceModifier.fillMaxWidth().height(heightDp.dp),
-        )
-    } else {
-        NativeTide(fraction, innerWidthDp)
-    }
-}
-
-/**
- * Marea nativa (fallback): parte reproducida (#6FD8C6) proporcional al progreso usando el ancho real;
- * el resto (#3A3357) toma lo que sobra con defaultWeight. Sin onda, pero se repinta SIEMPRE.
- */
-@Composable
-private fun NativeTide(fraction: Float, innerWidthDp: Float) {
-    val f = fraction.coerceIn(0f, 1f)
-    val playedDp = (innerWidthDp * f).toInt()
-    Row(modifier = GlanceModifier.fillMaxWidth().height(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        if (playedDp > 0) {
-            Box(GlanceModifier.width(playedDp.dp).height(6.dp).background(fixed(Marea)).cornerRadius(3.dp)) {}
-        }
-        if (f < 1f) {
-            Box(GlanceModifier.defaultWeight().height(3.dp).background(fixed(Track)).cornerRadius(2.dp)) {}
-        }
     }
 }
 
@@ -317,13 +268,12 @@ private fun ControlButton(
 }
 
 /**
- * Play/pausa: círculo de acento (#8E7DF0) con el icono Rounded (barras esbeltas y redondeadas para la
- * pausa; triángulo redondeado para el play) en #0A0910. Se usan drawables RESOURCE (no bitmaps): al
- * alternar cambia el resId, así `setImageViewResource` repinta bien en MIUI (el caché afecta a los
- * bitmaps, no a un recurso distinto). El icono de play va algo mayor. Área táctil ~56 dp.
+ * Play/pausa: círculo teñido con el [accent] dinámico de la carátula (o la marca #8E7DF0 si es monocroma
+ * o no hay) con el icono Rounded en #0A0910. Se usan drawables RESOURCE (no bitmaps): al alternar cambia
+ * el resId, así `setImageViewResource` repinta bien en MIUI. El icono de play va algo mayor. Área ~56 dp.
  */
 @Composable
-private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp) {
+private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, accent: Color) {
     val context = LocalContext.current
     val circle = boxSize - 8.dp // deja un anillo táctil alrededor del círculo visible
     Box(
@@ -331,7 +281,7 @@ private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp) {
         contentAlignment = Alignment.Center,
     ) {
         Box(
-            modifier = GlanceModifier.size(circle).background(fixed(Accent)).cornerRadius(circle / 2),
+            modifier = GlanceModifier.size(circle).background(fixed(accent)).cornerRadius(circle / 2),
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -342,11 +292,4 @@ private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp) {
             )
         }
     }
-}
-
-/** Fracción reproducida con la posición redondeada a 2 s, para muestrear el progreso de la marea. */
-private fun bucketedFraction(positionMs: Long, durationMs: Long): Float {
-    if (durationMs <= 0L) return 0f
-    val bucketed = (positionMs / 2_000L) * 2_000L
-    return (bucketed.toFloat() / durationMs).coerceIn(0f, 1f)
 }

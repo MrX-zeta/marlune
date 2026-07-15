@@ -18,8 +18,9 @@ import kotlinx.coroutines.flow.update
 
 /**
  * Estado ligero que el widget necesita para pintarse. Incluye la carátula ya decodificada como
- * [Bitmap] (la carga el servicio, no el widget), para que la composición del widget sea síncrona: sin
- * `produceState` ni recargas que parpadeen al empujar `updateAll`.
+ * [Bitmap] y el acento extraído de ella ([accentArgb], argb; `null` = acento de marca), ambos calculados
+ * por el servicio (no el widget), para que la composición del widget sea síncrona: sin `produceState`
+ * ni recargas que parpadeen al empujar `updateAll`. Sin posición: el widget ya no muestra progreso.
  */
 data class WidgetPlaybackState(
     val hasItem: Boolean,
@@ -27,13 +28,12 @@ data class WidgetPlaybackState(
     val title: String,
     val artist: String,
     val artwork: Bitmap?,
+    val accentArgb: Int?,
     val isPlaying: Boolean,
     val shuffle: Boolean,
-    val positionMs: Long,
-    val durationMs: Long,
 ) {
     companion object {
-        val Empty = WidgetPlaybackState(false, null, "", "", null, false, false, 0L, 0L)
+        val Empty = WidgetPlaybackState(false, null, "", "", null, null, false, false)
     }
 }
 
