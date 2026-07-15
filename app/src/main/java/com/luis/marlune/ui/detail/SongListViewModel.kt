@@ -50,6 +50,15 @@ class SongListViewModel(
         if (index >= 0) playback.playSongs(state.value.songs, index)
     }
 
+    /**
+     * Reproduce la lista BARAJADA: arma una cola pre-barajada (mismo enfoque que el Mix de Inicio, no
+     * `shuffleModeEnabled`) y empieza en la primera. La cola queda solo con las canciones de la lista.
+     */
+    fun playShuffled() {
+        val shuffled = state.value.songs.shuffled()
+        if (shuffled.isNotEmpty()) playback.playSongs(shuffled, startIndex = 0)
+    }
+
     companion object {
         fun factory(
             playback: PlaybackRepository,
