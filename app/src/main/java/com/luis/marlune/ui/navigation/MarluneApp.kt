@@ -19,11 +19,13 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,7 @@ import androidx.navigation.navArgument
 import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import com.luis.marlune.di.rememberAppPrefsStore
 import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberLyricsRepository
 import com.luis.marlune.di.rememberMusicRepository
@@ -73,11 +76,12 @@ import com.luis.marlune.ui.theme.LocalMarluneAccentController
 import com.luis.marlune.ui.components.rememberHapticTick
 import com.luis.marlune.ui.home.HomeRoute
 import com.luis.marlune.ui.library.LibraryRoute
+import com.luis.marlune.ui.onboarding.OnboardingFlow
 import com.luis.marlune.ui.player.MiniPlayer
 import com.luis.marlune.ui.player.PlayerEvent
 import com.luis.marlune.ui.player.PlayerScreen
 import com.luis.marlune.ui.permissions.PermissionRationaleScreen
-import com.luis.marlune.ui.permissions.RequestNotificationPermissionOnce
+import com.luis.marlune.ui.permissions.RequestNotificationPermissionOnFirstPlay
 import com.luis.marlune.ui.permissions.rememberAudioPermissionState
 import com.luis.marlune.ui.settings.SettingsRoute
 import com.luis.marlune.ui.player.PlayerViewModel
@@ -104,16 +108,32 @@ private const val ARTIST_KEY = "player-artist"
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 fun MarluneApp(modifier: Modifier = Modifier) {
-    // Sin permiso de audio no hay música local que mostrar: se pide en runtime y, si no está
-    // concedido, se explica por qué (con acción para conceder o abrir Ajustes).
+    // Primera experiencia: en el PRIMER arranque se muestra el onboarding (bienvenida + explicación
+    // del permiso de música), nunca diálogos de permiso a secas. Ya completado, la app abre directa.
+    val appPrefs = rememberAppPrefsStore()
+    val onboardingCompleted by appPrefs.onboardingCompleted.collectAsStateWithLifecycle(initialValue = null)
     val audioPermission = rememberAudioPermissionState()
+    val prefsScope = rememberCoroutineScope()
+
+    // Cargando el flag: fondo neutro (evita parpadear antes de decidir qué mostrar).
+    if (onboardingCompleted == null) {
+        Surface(modifier = modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {}
+        return
+    }
+    // Primer arranque → onboarding; se completa al conceder el permiso de música.
+    if (onboardingCompleted == false) {
+        OnboardingFlow(
+            permission = audioPermission,
+            onCompleted = { prefsScope.launch { appPrefs.setOnboardingCompleted() } },
+            modifier = modifier,
+        )
+        return
+    }
+    // Onboarding ya hecho: si el permiso se revocó después, se explica (reintentar / abrir Ajustes).
     if (!audioPermission.isGranted) {
         PermissionRationaleScreen(state = audioPermission, modifier = modifier)
         return
     }
-
-    // Notificación de reproducción (Android 13+); opcional, no bloquea la reproducción.
-    RequestNotificationPermissionOnce()
 
     // Conecta el MediaController al servicio mientras la UI está viva; lo suelta al salir (la
     // reproducción sigue en el servicio). La conexión es asíncrona dentro del PlaybackRepository.
@@ -136,6 +156,10 @@ fun MarluneApp(modifier: Modifier = Modifier) {
         )
     val playerState by playerViewModel.uiState.collectAsStateWithLifecycle()
     val queueState by playerViewModel.queue.collectAsStateWithLifecycle()
+
+    // Notificación de reproducción (Android 13+): se pide en el PRIMER play, una sola vez. Opcional;
+    // sin ella la reproducción sigue igual (solo no se ve la notificación con controles).
+    RequestNotificationPermissionOnFirstPlay(hasStartedPlayback = playerState.isPlaying)
     val lyricsState by playerViewModel.lyricsState.collectAsStateWithLifecycle()
     val lyricsFolderError by playerViewModel.folderError.collectAsStateWithLifecycle()
     val internetLyricsEnabled by playerViewModel.internetLyricsEnabled.collectAsStateWithLifecycle()

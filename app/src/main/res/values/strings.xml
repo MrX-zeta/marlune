@@ -90,6 +90,10 @@
     <string name="sleep_60">1 h</string>
     <string name="sleep_end_of_track">Al terminar la canción</string>
     <string name="sleep_remaining">Quedan %1$d min</string>
+    <!-- Notificaciones -->
+    <string name="settings_notifications">Notificaciones</string>
+    <string name="settings_notifications_on">Activadas</string>
+    <string name="settings_notifications_off">Desactivadas</string>
     <string name="settings_internet_lyrics">Buscar letras en internet</string>
     <string name="settings_internet_lyrics_desc">Envía el título y artista de la canción a un servicio de letras (LRCLIB). Desactivado, Marlune no se conecta a internet.</string>
     <string name="settings_downloaded_lyrics">Letras descargadas</string>
@@ -161,4 +165,9 @@
     <string name="permission_body_settings">Concede el acceso a “Música y audio” en Ajustes para ver tu biblioteca. Todo local, sin conexión.</string>
     <string name="permission_grant">Conceder acceso</string>
     <string name="permission_open_settings">Abrir ajustes</string>
+
+    <!-- Onboarding (primer arranque) -->
+    <string name="onboarding_welcome_title">Te damos la bienvenida a Marlune</string>
+    <string name="onboarding_welcome_body">Tu música local. Sin anuncios, sin cuentas.</string>
+    <string name="onboarding_continue">Continuar</string>
 </resources>

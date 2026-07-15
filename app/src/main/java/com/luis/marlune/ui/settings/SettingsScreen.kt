@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bedtime
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
@@ -27,6 +28,7 @@ import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Timer
@@ -57,6 +59,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -75,6 +78,8 @@ import com.luis.marlune.di.rememberSettingsStore
 import com.luis.marlune.playback.PlaybackRepository
 import com.luis.marlune.playback.SleepTimerOption
 import com.luis.marlune.playback.SleepTimerState
+import com.luis.marlune.ui.permissions.areNotificationsEnabled
+import com.luis.marlune.ui.permissions.openAppNotificationSettings
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -209,6 +214,13 @@ private fun SettingsScreen(
     var showConfirm by remember { mutableStateOf(false) }
     var showTimerDialog by remember { mutableStateOf(false) }
 
+    // Estado de notificaciones (solo lectura): se refresca al volver de los ajustes del sistema.
+    var notificationsEnabled by remember { mutableStateOf(areNotificationsEnabled(context)) }
+    LifecycleStartEffect(Unit) {
+        notificationsEnabled = areNotificationsEnabled(context)
+        onStopOrDispose {}
+    }
+
     // Resultado breve al terminar de escanear (transición escaneando → listo).
     var scanCompleted by remember { mutableStateOf(false) }
     LaunchedEffect(scanning) {
@@ -307,6 +319,25 @@ private fun SettingsScreen(
                                     style = MarluneTheme.typography.labelLarge,
                                     color = if (timerLabel != null) MarluneTheme.colors.accent
                                     else MarluneTheme.colors.textTertiary,
+                                )
+                            },
+                        )
+                        SettingRowDivider()
+                        // Solo MUESTRA el estado y lleva a los ajustes del sistema (los permisos no se
+                        // revocan desde la app; nada de un toggle que no puede cumplir).
+                        SettingRow(
+                            icon = Icons.Rounded.Notifications,
+                            title = stringResource(R.string.settings_notifications),
+                            description = stringResource(
+                                if (notificationsEnabled) R.string.settings_notifications_on
+                                else R.string.settings_notifications_off,
+                            ),
+                            onClick = { context.openAppNotificationSettings() },
+                            trailing = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = MarluneTheme.colors.textTertiary,
                                 )
                             },
                         )
