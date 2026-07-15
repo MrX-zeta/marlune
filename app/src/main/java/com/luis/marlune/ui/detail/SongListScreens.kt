@@ -126,8 +126,21 @@ fun AlbumDetailRoute(albumId: Long, contentPadding: PaddingValues, onBack: () ->
     val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
     val title = state.songs.firstOrNull()?.album.orEmpty()
 
-    DetailScaffold(title, onBack, contentPadding) { bottomPadding ->
-        SongListBody(state, nowPlaying, bottomPadding, Icons.Rounded.MusicNote, title, "", vm::play)
+    // El nombre vive en la cabecera desplazable; la barra deja solo el retroceso.
+    DetailScaffold("", onBack, contentPadding) { bottomPadding ->
+        SongListBody(
+            state, nowPlaying, bottomPadding, Icons.Rounded.MusicNote, title, "", vm::play,
+            header = {
+                DetailHeader(
+                    covers = headerCovers(state.songs, max = 1), // álbum: una sola carátula
+                    coverFallbackKey = albumId,
+                    title = title,
+                    songCount = state.songs.size,
+                    onPlay = { vm.play(0) },
+                    onShuffle = vm::playShuffled,
+                )
+            },
+        )
     }
 }
 
@@ -147,8 +160,20 @@ fun ArtistDetailRoute(artistId: Long, contentPadding: PaddingValues, onBack: () 
     val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
     val title = state.songs.firstOrNull()?.artist.orEmpty()
 
-    DetailScaffold(title, onBack, contentPadding) { bottomPadding ->
-        SongListBody(state, nowPlaying, bottomPadding, Icons.Rounded.MusicNote, title, "", vm::play)
+    DetailScaffold("", onBack, contentPadding) { bottomPadding ->
+        SongListBody(
+            state, nowPlaying, bottomPadding, Icons.Rounded.MusicNote, title, "", vm::play,
+            header = {
+                DetailHeader(
+                    covers = headerCovers(state.songs, max = 4), // artista: mosaico de sus canciones
+                    coverFallbackKey = artistId,
+                    title = title,
+                    songCount = state.songs.size,
+                    onPlay = { vm.play(0) },
+                    onShuffle = vm::playShuffled,
+                )
+            },
+        )
     }
 }
 
@@ -166,7 +191,7 @@ fun PlaylistDetailRoute(playlistId: Long, contentPadding: PaddingValues, onBack:
     val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
-    DetailScaffold(name.orEmpty(), onBack, contentPadding) { bottomPadding ->
+    DetailScaffold("", onBack, contentPadding) { bottomPadding ->
         SongListBody(
             state = state,
             nowPlaying = nowPlaying,
@@ -176,6 +201,17 @@ fun PlaylistDetailRoute(playlistId: Long, contentPadding: PaddingValues, onBack:
             emptyHint = stringResource(R.string.playlist_detail_empty_hint),
             onPlay = vm::play,
             onRemoveFromPlaylist = { songId -> scope.launch { playlists.removeSong(playlistId, songId) } },
+            header = {
+                DetailHeader(
+                    covers = headerCovers(state.songs, max = 4),
+                    coverFallbackKey = playlistId,
+                    title = name.orEmpty(),
+                    songCount = state.songs.size,
+                    onPlay = { vm.play(0) },
+                    onShuffle = vm::playShuffled,
+                )
+            },
+            onReorder = { orderedIds -> scope.launch { playlists.reorderSongs(playlistId, orderedIds) } },
         )
     }
 }
@@ -191,6 +227,8 @@ private fun SongListBody(
     emptyHint: String,
     onPlay: (Int) -> Unit,
     onRemoveFromPlaylist: ((Long) -> Unit)? = null,
+    header: (@Composable () -> Unit)? = null,
+    onReorder: ((List<Long>) -> Unit)? = null,
 ) {
     when {
         state.isLoading -> LoadingRows()
@@ -205,6 +243,12 @@ private fun SongListBody(
             enableAddToPlaylist = true,
             onRemoveFromPlaylist = onRemoveFromPlaylist,
             onEntryClick = { entry -> onPlay(state.songs.indexOfFirst { it.id == entry.id }) },
+            header = header,
+            onReorder = onReorder,
         )
     }
 }
+
+/** Construye las carátulas del mosaico de cabecera a partir de las primeras canciones. */
+private fun headerCovers(songs: List<com.luis.marlune.domain.model.Song>, max: Int) =
+    songs.take(max).map { com.luis.marlune.domain.model.PlaylistCover(it.id, it.artworkUri) }

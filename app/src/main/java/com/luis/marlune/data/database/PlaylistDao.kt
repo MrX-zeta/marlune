@@ -5,12 +5,19 @@ import androidx.room.Dao
 import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 
 /** Lista con su conteo de canciones (por ahora 0; las canciones llegan en el siguiente sub-paso). */
 data class PlaylistWithCount(
     @Embedded val playlist: PlaylistEntity,
     @ColumnInfo(name = "song_count") val songCount: Int,
+)
+
+/** Referencia lista↔canción (para armar las carátulas del mosaico sin cargar toda la relación). */
+data class PlaylistSongRef(
+    @ColumnInfo(name = "playlist_id") val playlistId: Long,
+    @ColumnInfo(name = "song_id") val songId: Long,
 )
 
 /** Operaciones sobre las listas (gestión de las listas en sí). */
@@ -37,6 +44,10 @@ interface PlaylistDao {
     @Query("SELECT * FROM playlists WHERE id = :id")
     fun playlist(id: Long): Flow<PlaylistEntity?>
 
+    /** Todas las relaciones lista↔canción, ordenadas por lista y posición (para las carátulas). */
+    @Query("SELECT playlist_id, song_id FROM playlist_songs ORDER BY playlist_id ASC, position ASC")
+    fun allSongRefs(): Flow<List<PlaylistSongRef>>
+
     // --- Canciones dentro de una lista (relación con orden) ---
 
     @Query("SELECT EXISTS(SELECT 1 FROM playlist_songs WHERE playlist_id = :playlistId AND song_id = :songId)")
@@ -60,4 +71,13 @@ interface PlaylistDao {
     /** Ids de las canciones de la lista, en el ORDEN en que se añadieron. */
     @Query("SELECT song_id FROM playlist_songs WHERE playlist_id = :playlistId ORDER BY position ASC")
     fun songIds(playlistId: Long): Flow<List<Long>>
+
+    @Query("UPDATE playlist_songs SET position = :position WHERE playlist_id = :playlistId AND song_id = :songId")
+    suspend fun updatePosition(playlistId: Long, songId: Long, position: Int)
+
+    /** Reasigna las posiciones según el nuevo orden, en UNA sola transacción (actualización en bloque). */
+    @Transaction
+    suspend fun reorderSongs(playlistId: Long, orderedSongIds: List<Long>) {
+        orderedSongIds.forEachIndexed { index, songId -> updatePosition(playlistId, songId, index) }
+    }
 }

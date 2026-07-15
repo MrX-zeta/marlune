@@ -4,6 +4,7 @@ import com.luis.marlune.data.database.PlaylistDao
 import com.luis.marlune.data.database.PlaylistEntity
 import com.luis.marlune.data.database.PlaylistSongEntity
 import com.luis.marlune.domain.model.Playlist
+import com.luis.marlune.domain.model.PlaylistCover
 import com.luis.marlune.domain.model.Song
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -19,10 +20,22 @@ class PlaylistRepository(
     private val music: MusicRepository,
 ) {
 
-    /** Listas del usuario con su conteo real (reactivo al añadir/quitar canciones). */
+    /**
+     * Listas del usuario con su conteo real y las carátulas (hasta 4) de sus primeras canciones para
+     * el mosaico de portada. Reactivo a añadir/quitar/reordenar canciones y a la biblioteca (las
+     * canciones ya borradas de MediaStore se omiten del mosaico, igual que en la lista de la lista).
+     */
     val playlists: Flow<List<Playlist>> =
-        dao.playlistsWithCount().map { rows ->
-            rows.map { Playlist(id = it.playlist.id, name = it.playlist.name, songCount = it.songCount) }
+        combine(dao.playlistsWithCount(), dao.allSongRefs(), music.library) { rows, refs, libraryState ->
+            val byId = (libraryState as? LibraryState.Content)?.songs.orEmpty().associateBy { it.id }
+            val refsByPlaylist = refs.groupBy { it.playlistId } // ya ordenadas por posición
+            rows.map { row ->
+                val covers = refsByPlaylist[row.playlist.id].orEmpty()
+                    .mapNotNull { byId[it.songId] } // solo canciones existentes, en orden
+                    .take(4)
+                    .map { PlaylistCover(it.id, it.artworkUri) }
+                Playlist(id = row.playlist.id, name = row.playlist.name, songCount = row.songCount, covers = covers)
+            }
         }
 
     fun playlistName(id: Long): Flow<String?> = dao.playlist(id).map { it?.name }
@@ -49,6 +62,10 @@ class PlaylistRepository(
     }
 
     suspend fun removeSong(playlistId: Long, songId: Long) = dao.removeSong(playlistId, songId)
+
+    /** Persiste el nuevo orden de las canciones de la lista (en bloque). No toca la cola en curso. */
+    suspend fun reorderSongs(playlistId: Long, orderedSongIds: List<Long>) =
+        dao.reorderSongs(playlistId, orderedSongIds)
 
     /** Quita la canción de todas las listas (limpieza silenciosa al borrar su archivo). */
     suspend fun removeSongEverywhere(songId: Long) = dao.removeSongEverywhere(songId)
