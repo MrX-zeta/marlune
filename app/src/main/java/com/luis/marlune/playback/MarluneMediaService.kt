@@ -53,9 +53,14 @@ class MarluneMediaService : MediaSessionService() {
     @Volatile private var currentArtwork: android.graphics.Bitmap? = null
     private var artworkKey: String? = null
 
-    // En cada evento relevante del player, refresca el estado del widget y lo empuja al launcher.
+    // En cada evento relevante del player (pista, play/pausa, shuffle, seek), refresca el estado del
+    // widget y lo empuja al instante. La POSICIÓN no viaja por aquí: tiene su propio pulso regular
+    // (arranca/para según isPlaying, sin reiniciarse en cada evento → cadencia constante, sin tirones).
     private val widgetListener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) = publishWidgetState()
+        override fun onEvents(player: Player, events: Player.Events) {
+            publishWidgetState()
+            if (player.isPlaying) ensureTicker() else stopTicker()
+        }
     }
 
     @OptIn(UnstableApi::class) // ExoPlayer y su Builder están marcados como API inestable en Media3.
@@ -141,7 +146,6 @@ class MarluneMediaService : MediaSessionService() {
         )
         Log.d(TAG, "publish: playing=${p.isPlaying} title='${item?.mediaMetadata?.title}' pos=${p.currentPosition}")
         updateWidgets()
-        syncTicker(p.isPlaying)
     }
 
     /** Carga la carátula (Coil) solo cuando cambia la pista; una instancia nueva por pista (nota MIUI). */
@@ -165,28 +169,40 @@ class MarluneMediaService : MediaSessionService() {
         widgetScope.launch { runCatching { MarluneWidget().updateAll(applicationContext) } }
     }
 
-    /** Ticker de posición: mientras suena, re-publica cada ~3 s para que la marea avance (sin animación). */
-    private fun syncTicker(playing: Boolean) {
-        tickerJob?.cancel()
-        if (!playing) return
+    /**
+     * Pulso de posición: cadencia FIJA de 2 s (como un reloj) mientras suena. NO se reinicia con los
+     * eventos —solo arranca al empezar a sonar y para al pausar— así la marea avanza a saltos regulares.
+     */
+    private fun ensureTicker() {
+        if (tickerJob?.isActive == true) return
         tickerJob = widgetScope.launch {
             while (isActive) {
                 delay(POSITION_PUSH_MS)
                 val p = mediaSession?.player ?: break
                 if (!p.isPlaying) break
-                WidgetPlaybackBus.publish(
-                    WidgetPlaybackBus.state.value.copy(
-                        positionMs = p.currentPosition.coerceAtLeast(0L),
-                        durationMs = if (p.duration == C.TIME_UNSET) 0L else p.duration.coerceAtLeast(0L),
-                    ),
-                )
-                updateWidgets()
+                publishPosition(p)
             }
         }
     }
 
+    private fun stopTicker() {
+        tickerJob?.cancel()
+        tickerJob = null
+    }
+
+    /** Empuja solo la posición (sin re-leer metadatos), copiando el estado publicado. */
+    private fun publishPosition(p: Player) {
+        WidgetPlaybackBus.publish(
+            WidgetPlaybackBus.state.value.copy(
+                positionMs = p.currentPosition.coerceAtLeast(0L),
+                durationMs = if (p.duration == C.TIME_UNSET) 0L else p.duration.coerceAtLeast(0L),
+            ),
+        )
+        updateWidgets()
+    }
+
     private companion object {
         const val TAG = "MarluneWidget"
-        const val POSITION_PUSH_MS = 3_000L
+        const val POSITION_PUSH_MS = 2_000L // pulso fijo; no bajar (coste en batería)
     }
 }
