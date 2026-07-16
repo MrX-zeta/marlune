@@ -166,29 +166,44 @@ fun LibraryScreen(
     // UNA sola LazyColumn persistente: su estado se hoistea aquí y NO se recrea al cambiar de chip.
     // Cambiar de filtro solo cambia el DATA; Compose recicla los slots (keys + contentType).
     val listState = rememberLazyListState()
-    // Al CAMBIAR de categoría (chip) o de ORDEN (menú de orden) se REORDENA la lista → se vuelve ARRIBA
-    // (el índice viejo ya apunta a otra canción). Se recuerda el último con rememberSaveable para NO
-    // resetear al RESTAURAR (volver de Now Playing con el mismo chip/orden): solo sube a 0 cuando cambian
-    // de verdad. O(1).
+
+    // "Subir a 0" se marca con un FLAG en las acciones del usuario (cambiar chip / tocar un orden) y el
+    // scroll REAL se ejecuta cuando la lista YA refleja el nuevo contenido/orden (efecto de más abajo).
+    // Así gana a la preservación por key de LazyColumn al reordenar, y NO reacciona a la carga async del
+    // orden (evita saltos al arrancar) ni al restaurar (volver de Now Playing conserva la posición).
+    var pendingScrollTop by remember { mutableStateOf(false) }
+
+    // Cambio de CHIP (estado local del usuario). rememberSaveable evita marcarlo al RESTAURAR.
     var lastScrolledFilter by rememberSaveable { mutableStateOf(selectedFilter) }
-    var lastScrolledSort by rememberSaveable { mutableStateOf(currentSort) }
-    LaunchedEffect(selectedFilter, currentSort) {
-        if (selectedFilter != lastScrolledFilter || currentSort != lastScrolledSort) {
-            listState.scrollToItem(0)
+    LaunchedEffect(selectedFilter) {
+        if (selectedFilter != lastScrolledFilter) {
             lastScrolledFilter = selectedFilter
-            lastScrolledSort = currentSort
+            pendingScrollTop = true
         }
     }
-    // Al mostrar Canciones (entrar a la pestaña o VOLVER del reproductor) y al cambiar la pista actual,
-    // desplaza la lista hasta la canción que suena, para verla sin tener que buscarla. Solo en Canciones
-    // (los ids de álbum/artista viven en otro espacio). Keyed solo en songId → no choca con el subir-a-0
-    // del cambio de orden/filtro (ese no cambia songId).
+    // El cambio de ORDEN se marca en el propio tap (ver onSelectSort más abajo), NO reaccionando a
+    // currentSort: así no se dispara en la carga async del orden persistido al arrancar.
+
+    // Ejecuta el scroll a 0 cuando la lista ya muestra el nuevo contenido/orden, y consume el flag.
+    val shownEntries = uiState.entriesFor(selectedFilter)
+    LaunchedEffect(shownEntries) {
+        if (pendingScrollTop) {
+            listState.scrollToItem(0)
+            pendingScrollTop = false
+        }
+    }
+
+    // Al CAMBIAR de pista, desplaza a la canción que suena (para verla sin buscarla). SOLO en el cambio
+    // de pista, no en la re-entrada: por eso volver de Now Playing conserva la posición.
+    var lastScrolledSong by remember { mutableStateOf(nowPlaying.songId) }
     LaunchedEffect(nowPlaying.songId) {
-        if (selectedFilter == LibraryFilter.SONGS) {
-            val id = nowPlaying.songId
-            val index = if (id == null) -1
-            else uiState.entriesFor(LibraryFilter.SONGS).indexOfFirst { it.id == id }
-            if (index >= 0) listState.scrollToItem(index)
+        val id = nowPlaying.songId
+        if (id != null && id != lastScrolledSong) {
+            lastScrolledSong = id
+            if (selectedFilter == LibraryFilter.SONGS) {
+                val index = uiState.entriesFor(LibraryFilter.SONGS).indexOfFirst { it.id == id }
+                if (index >= 0) listState.scrollToItem(index)
+            }
         }
     }
 
@@ -203,7 +218,15 @@ fun LibraryScreen(
                 .padding(top = contentPadding.calculateTopPadding())
                 .padding(horizontal = 20.dp),
         ) {
-            LibraryTopBar(currentSort = currentSort, onSelectSort = onSelectSort)
+            LibraryTopBar(
+                currentSort = currentSort,
+                onSelectSort = { sort ->
+                    // Tap del usuario en un orden distinto → marca subir a 0 (el scroll se hace cuando la
+                    // lista ya esté reordenada). Reaccionar aquí, y no a currentSort, evita el salto async.
+                    if (sort != currentSort) pendingScrollTop = true
+                    onSelectSort(sort)
+                },
+            )
             LibraryFilterChips(
                 selected = selectedFilter,
                 onSelect = { selectedFilter = it },
