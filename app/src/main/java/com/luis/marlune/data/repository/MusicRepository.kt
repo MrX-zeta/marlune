@@ -1,5 +1,6 @@
 package com.luis.marlune.data.repository
 
+import com.luis.marlune.data.SongTitleCleaner
 import com.luis.marlune.data.datastore.SettingsStore
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.domain.model.Album
@@ -50,7 +51,9 @@ class MusicRepository(
     val library: StateFlow<LibraryState> =
         combine(source.observeSongs(), settings.shortClipFilter) { songs, filter ->
             val visible = if (filter.enabled) songs.filter { it.durationMs >= filter.minDurationMs } else songs
-            LibraryState.Content(visible)
+            // Limpieza de títulos/artistas UNA vez aquí (este combine corre en el scope de datos, fuera del
+            // hilo principal): a partir de este punto toda la app usa el Song ya limpio.
+            LibraryState.Content(SongTitleCleaner.cleanLibrary(visible))
         }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), LibraryState.Loading)
 
     /** Lista de canciones ya cargada (vacía mientras está en Loading). */
@@ -84,8 +87,11 @@ class MusicRepository(
                 emptyList()
             } else {
                 list.filter { song ->
+                    // Busca sobre el nombre LIMPIO y también sobre el ORIGINAL sucio (rawTitle/rawArtist).
                     song.title.lowercase(Locale.getDefault()).contains(term) ||
+                        song.rawTitle.lowercase(Locale.getDefault()).contains(term) ||
                         song.artist.lowercase(Locale.getDefault()).contains(term) ||
+                        song.rawArtist.lowercase(Locale.getDefault()).contains(term) ||
                         song.album.lowercase(Locale.getDefault()).contains(term) ||
                         song.genre?.lowercase(Locale.getDefault())?.contains(term) == true
                 }

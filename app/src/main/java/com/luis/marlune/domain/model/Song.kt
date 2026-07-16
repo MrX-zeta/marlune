@@ -31,4 +31,11 @@ data class Song(
     val relativePath: String,
     val contentUri: Uri,
     val artworkUri: Uri?,
+    /**
+     * Título/artista ORIGINALES tal cual vienen de MediaStore (antes de la limpieza de presentación de
+     * [com.luis.marlune.data.SongTitleCleaner]). Se conservan para que la búsqueda encuentre la canción
+     * tanto por el nombre limpio como por el sucio. Por defecto vacíos (los rellena el limpiador).
+     */
+    val rawTitle: String = "",
+    val rawArtist: String = "",
 )
