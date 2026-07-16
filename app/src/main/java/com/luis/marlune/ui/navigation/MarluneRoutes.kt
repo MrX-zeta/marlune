@@ -5,11 +5,19 @@ package com.luis.marlune.ui.navigation
  * de la barra inferior ([MarluneDestination]); el resto son pantallas de detalle apiladas encima.
  */
 object Routes {
+    // Contenedor de las 3 pestañas de primer nivel (HorizontalPager). Los detalles se apilan encima.
+    const val TABS = "tabs"
     const val HOME = "home"
     const val LIBRARY = "library"
     const val SEARCH = "search"
 
     const val SETTINGS = "settings"
+    // Ajustes con resaltado opcional de una sección (auto-scroll + parpadeo al llegar).
+    const val SETTINGS_HIGHLIGHT_ARG = "highlight"
+    const val SETTINGS_HIGHLIGHT_LYRICS = "lyrics"
+    const val SETTINGS_ROUTE = "settings?highlight={$SETTINGS_HIGHLIGHT_ARG}"
+    fun settings(highlight: String? = null): String =
+        if (highlight.isNullOrEmpty()) SETTINGS else "$SETTINGS?highlight=$highlight"
 
     const val LIKED = "liked"
     const val RECENTLY_ADDED = "recently_added"

@@ -19,6 +19,9 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
@@ -295,9 +298,18 @@ fun MarluneApp(
                     onEvent = dispatchPlayer,
                     onMinimize = { playerExpanded = false },
                     onLyricsFolderPicked = playerViewModel::onLyricsFolderPicked,
+                    // "Buscar letras en internet" lleva a Ajustes resaltando la card de Letras
+                    // (auto-scroll + parpadeo), para que el usuario vea de inmediato el ajuste a activar.
+                    // Ancla Ajustes SIEMPRE sobre Inicio (consistente con tabForRoute=HOME) aunque el
+                    // reproductor se abriera sobre Biblioteca/Buscar: si no, Ajustes quedaba en la pila de
+                    // otra pestaña y tocar esa pestaña restauraba Ajustes ("solo se ilumina, no cambia").
+                    // saveState conserva la pestaña anterior para restaurarla al volver a ella.
                     onOpenSettings = {
                         playerExpanded = false
-                        navController.navigate(Routes.SETTINGS)
+                        navController.navigate(Routes.settings(Routes.SETTINGS_HIGHLIGHT_LYRICS)) {
+                            popUpTo(Routes.TABS) { saveState = true }
+                            launchSingleTop = true
+                        }
                     },
                     queue = queueState,
                     showQueue = showQueue,
@@ -347,6 +359,12 @@ private fun MarluneShell(
     miniTitleModifier: Modifier,
     miniArtistModifier: Modifier,
 ) {
+    // Pager de las 3 pestañas (swipe horizontal). Vive en el shell para compartirlo con la barra
+    // inferior; su estado se preserva con el shell (rememberSaveable → sobrevive a ir/volver de Now
+    // Playing). Los detalles (ajustes, álbum…) siguen apilándose sobre el pager en el NavHost.
+    val pagerState = rememberPagerState(pageCount = { MarluneDestination.entries.size })
+    val tabScope = rememberCoroutineScope()
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -374,11 +392,21 @@ private fun MarluneShell(
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                     )
                 }
-                // La pestaña resaltada se deriva de la ruta actual (los detalles cuelgan de Inicio).
+                // En las pestañas, la resaltada = la página del pager; en un detalle, la pestaña padre.
                 val currentRoute = navController.currentBackStackEntryAsState().value?.destination?.route
+                val onTabs = currentRoute == Routes.TABS
                 MarluneBottomBar(
-                    selected = tabForRoute(currentRoute),
-                    onSelect = { destination -> navController.navigateToTab(destination) },
+                    selected = if (onTabs) MarluneDestination.entries[pagerState.currentPage]
+                    else tabForRoute(currentRoute),
+                    onSelect = { destination ->
+                        if (onTabs) {
+                            tabScope.launch { pagerState.animateScrollToPage(destination.ordinal) }
+                        } else {
+                            // Desde un detalle: quita los detalles (vuelve al pager) y coloca la pestaña.
+                            navController.popBackStack(Routes.TABS, inclusive = false)
+                            tabScope.launch { pagerState.scrollToPage(destination.ordinal) }
+                        }
+                    },
                 )
             }
         },
@@ -389,16 +417,8 @@ private fun MarluneShell(
             navController = navController,
             contentPadding = innerPadding,
             onSongQueued = onSongQueued,
+            pagerState = pagerState,
         )
-    }
-}
-
-/** Navega a un destino de primer nivel reutilizando su back stack (patrón estándar de bottom nav). */
-private fun NavHostController.navigateToTab(destination: MarluneDestination) {
-    navigate(destination.route()) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
     }
 }
 
@@ -408,31 +428,33 @@ private fun MarluneNavHost(
     navController: NavHostController,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
     onSongQueued: () -> Unit,
+    pagerState: PagerState,
 ) {
-    NavHost(navController = navController, startDestination = Routes.HOME) {
-        composable(Routes.HOME) {
-            HomeRoute(
-                onOpenLiked = { navController.navigate(Routes.LIKED) },
-                onOpenRecentlyAdded = { navController.navigate(Routes.RECENTLY_ADDED) },
-                onSeeAllRecent = { navController.navigate(Routes.HISTORY) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+    NavHost(navController = navController, startDestination = Routes.TABS) {
+        composable(Routes.TABS) {
+            TabsPager(
+                pagerState = pagerState,
+                navController = navController,
                 contentPadding = contentPadding,
-            )
-        }
-        composable(Routes.SETTINGS) {
-            SettingsRoute(onBack = navController::popBackStack, contentPadding = contentPadding)
-        }
-        composable(Routes.LIBRARY) {
-            LibraryRoute(
-                onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
-                onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
-                onOpenPlaylist = { id -> navController.navigate(Routes.playlist(id)) },
                 onSongQueued = onSongQueued,
-                contentPadding = contentPadding,
             )
         }
-        composable(Routes.SEARCH) {
-            SearchRoute(modifier = Modifier.padding(contentPadding))
+        composable(
+            route = Routes.SETTINGS_ROUTE,
+            arguments = listOf(
+                navArgument(Routes.SETTINGS_HIGHLIGHT_ARG) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            SettingsRoute(
+                onBack = navController::popBackStack,
+                contentPadding = contentPadding,
+                highlightLyrics = entry.arguments?.getString(Routes.SETTINGS_HIGHLIGHT_ARG) ==
+                    Routes.SETTINGS_HIGHLIGHT_LYRICS,
+            )
         }
         composable(Routes.LIKED) {
             LikedSongsRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
@@ -489,6 +511,48 @@ private fun MarluneNavHost(
                 contentPadding = contentPadding,
                 onBack = navController::popBackStack,
             )
+        }
+    }
+}
+
+/**
+ * Pestañas de primer nivel en un [HorizontalPager]: SWIPE horizontal para navegar (Inicio · Biblioteca ·
+ * Buscar), con la barra inferior de apoyo. Los detalles (ajustes, álbum…) se abren en el NavHost por
+ * ENCIMA del pager. Back en una pestaña ≠ Inicio vuelve a Inicio (como el bottom nav). El estado de cada
+ * página lo preserva el propio Pager (SaveableStateHolder), incluido al deslizar entre ellas.
+ */
+@Composable
+private fun TabsPager(
+    pagerState: PagerState,
+    navController: NavHostController,
+    contentPadding: androidx.compose.foundation.layout.PaddingValues,
+    onSongQueued: () -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    BackHandler(enabled = pagerState.currentPage != 0) {
+        scope.launch { pagerState.animateScrollToPage(0) }
+    }
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        key = { it },
+    ) { page ->
+        when (page) {
+            MarluneDestination.HOME.ordinal -> HomeRoute(
+                onOpenLiked = { navController.navigate(Routes.LIKED) },
+                onOpenRecentlyAdded = { navController.navigate(Routes.RECENTLY_ADDED) },
+                onSeeAllRecent = { navController.navigate(Routes.HISTORY) },
+                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                contentPadding = contentPadding,
+            )
+            MarluneDestination.LIBRARY.ordinal -> LibraryRoute(
+                onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
+                onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
+                onOpenPlaylist = { id -> navController.navigate(Routes.playlist(id)) },
+                onSongQueued = onSongQueued,
+                contentPadding = contentPadding,
+            )
+            MarluneDestination.SEARCH.ordinal -> SearchRoute(modifier = Modifier.padding(contentPadding))
         }
     }
 }
