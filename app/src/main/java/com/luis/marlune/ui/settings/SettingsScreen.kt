@@ -56,6 +56,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -233,8 +234,12 @@ private fun SettingsScreen(
     var viewportTopY by remember { mutableStateOf(0f) }
     var lyricsCardTopY by remember { mutableStateOf(0f) }
     val lyricsBlink = remember { Animatable(0f) }
+    // ONE-SHOT: solo la PRIMERA vez que se llega con highlight. El flag sobrevive (rememberSaveable) a
+    // ir/volver de Now Playing, así el destello NO se repite cada vez que se sale de la carátula.
+    var lyricsHighlighted by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(highlightLyrics) {
-        if (highlightLyrics) {
+        if (highlightLyrics && !lyricsHighlighted) {
+            lyricsHighlighted = true
             // Espera a que Ajustes termine de ENTRAR (transición Now Playing → shell) y esté medido.
             delay(380)
             val margin = with(density) { 16.dp.toPx() }
