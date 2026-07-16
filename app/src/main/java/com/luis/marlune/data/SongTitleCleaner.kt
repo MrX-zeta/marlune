@@ -20,10 +20,10 @@ import java.util.Locale
  */
 object SongTitleCleaner {
 
-    // Separador FUERTE: uno o más de guiones/barra/viñeta o "//" con espacio alrededor ("A • // B",
-    // "A - B"). Requiere espacios (no parte "spider-man"); NO usa "/" simple (aparece en "español /
-    // inglés", "AC/DC"), solo "//".
-    private val STRONG_SEP = Regex("\\s+(?:(?:[-–—|•·・]|//)+\\s*)+")
+    // Separador FUERTE: uno o más de guiones/barra/viñeta/grado o "//" con espacio alrededor ("A • // B",
+    // "A ° B", "A - B"). Requiere espacios (no parte "spider-man"); NO usa "/" simple (aparece en
+    // "español / inglés", "AC/DC"), solo "//".
+    private val STRONG_SEP = Regex("\\s+(?:(?:[-–—|•·・°]|//)+\\s*)+")
     // Descriptores de VERSIÓN (se le ponen a las CANCIONES): dan prioridad de título al segmento que los
     // lleva. NO incluye formato (official/videoclip/audio…), que puede colgar de cualquiera.
     private val VERSION_DESC = Regex(
@@ -77,22 +77,21 @@ object SongTitleCleaner {
         "deep house", "tech house", "progressive house",
     )
 
-    /** Limpia toda la biblioteca a la vez (identificar artistas necesita el conjunto de artistas reales). */
-    fun cleanLibrary(songs: List<Song>): List<Song> {
-        val validArtists = HashSet<String>()
-        for (s in songs) {
-            if (isUsableArtist(s.artist, s.displayName)) validArtists.add(flat(s.artist))
-        }
-        return songs.map { clean(it, validArtists) }
-    }
+    /**
+     * Limpia cada canción de forma DETERMINISTA: el resultado depende SOLO del propio archivo (título +
+     * su tag de artista), nunca del resto de la biblioteca — así el título de una canción NO cambia al
+     * añadir o borrar OTRAS canciones.
+     */
+    fun cleanLibrary(songs: List<Song>): List<Song> = songs.map { clean(it) }
 
-    private fun clean(song: Song, validArtists: Set<String>): Song {
+    private fun clean(song: Song): Song {
         val usable = isUsableArtist(song.artist, song.displayName)
-        // Nombres del tag desglosados (por comas/&/feat) para reconocer artistas dentro de una lista.
+        // Solo el tag del PROPIO archivo (desglosado por comas/&/feat) reconoce artistas. Sin conjunto de
+        // biblioteca: el título es estable y no depende de qué otras canciones existan.
         val tagParts = if (usable) artistNameParts(song.artist) else emptySet()
         fun isArtistSeg(seg: String): Boolean {
             val f = flat(seg)
-            return f.isNotEmpty() && (f in validArtists || f in tagParts)
+            return f.isNotEmpty() && f in tagParts
         }
 
         var artist = song.artist
@@ -124,8 +123,16 @@ object SongTitleCleaner {
             // Candidatos = los que NO son artistas conocidos; título = el de mayor puntuación
             // (titleness + boost); empate → el último (convención Artista-Título de YouTube).
             val candidates = segs.filterNot { isArtistSeg(it.first) }.ifEmpty { segs }
+            // Título = mayor puntuación (titleness + boost); empate → MÁS palabras (una frase-título suele
+            // ser más larga que un nombre de artista); empate final → el último (convención Artista-Título).
             title = candidates.withIndex()
-                .maxWith(compareBy({ titleness(it.value.first) + it.value.second }, { it.index })).value.first
+                .maxWith(
+                    compareBy(
+                        { titleness(it.value.first) + it.value.second },
+                        { wordCount(it.value.first) },
+                        { it.index },
+                    ),
+                ).value.first
             if (!usable) {
                 artist = segs.map { it.first }.firstOrNull { isArtistSeg(it) }
                     ?: segs.filter { it.first != title }.minByOrNull { titleness(it.first) }?.first
@@ -162,6 +169,9 @@ object SongTitleCleaner {
         if (seg.trim().endsWith("!")) score -= 1
         return score
     }
+
+    /** Nº de palabras significativas (para el desempate: los títulos suelen ser más largos). */
+    private fun wordCount(seg: String): Int = flat(seg).split(' ').count { it.isNotEmpty() }
 
     /** Un segmento es metadato si es un género, contiene un marcador fuerte, o TERMINA en un descriptor. */
     private fun isMeta(seg: String): Boolean {
