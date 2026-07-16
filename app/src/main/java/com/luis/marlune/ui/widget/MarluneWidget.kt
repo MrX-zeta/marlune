@@ -113,52 +113,65 @@ private fun WidgetContent(favorites: FavoritesRepository) {
     }
 }
 
-/** Layout A (compacto): carátula · título/artista · anterior/play/siguiente. */
+/**
+ * Layout A (mínimo, la tira ancha y baja): la CARÁTULA manda —grande, ocupa el alto— y a su derecha
+ * anterior/play/siguiente repartidos con defaultWeight (sin huecos ni pegados al borde). SIN texto (se
+ * recortaría a "..." sin informar) y sin shuffle/me gusta (no caben con áreas de 48 dp).
+ */
 @Composable
 private fun CompactLayout(s: WidgetPlaybackState, accent: Color) {
     val context = LocalContext.current
-    val openNowPlaying = GlanceModifier.clickable(actionStartActivity(openAppIntent(context, nowPlaying = true)))
+    val openNowPlaying = GlanceModifier.clickable(
+        actionStartActivity(openAppIntent(context, nowPlaying = true)),
+        rippleOverride = R.drawable.widget_ripple_none,
+    )
+    val artDim = (LocalSize.current.height.value - 12f).coerceIn(40f, 96f) // llena el alto disponible
     Row(
-        modifier = GlanceModifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 4.dp),
+        modifier = GlanceModifier.fillMaxSize().padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Artwork(s.artwork, size = 44.dp, corner = 8.dp, modifier = openNowPlaying)
-        Spacer(GlanceModifier.width(10.dp))
-        Column(modifier = GlanceModifier.defaultWeight().then(openNowPlaying)) {
-            Text(s.title, maxLines = 1, style = TitleStyle)
-            Spacer(GlanceModifier.height(2.dp))
-            Text(s.artist, maxLines = 1, style = ArtistStyle)
+        Artwork(s.artwork, size = artDim.dp, corner = 10.dp, modifier = openNowPlaying)
+        WeightedControl {
+            ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 24.dp) {
+                actionRunCallback<WidgetPreviousAction>()
+            }
         }
-        Spacer(GlanceModifier.width(8.dp))
-        ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 22.dp) {
-            actionRunCallback<WidgetPreviousAction>()
-        }
-        Spacer(GlanceModifier.width(8.dp))
-        PlayPauseButton(s.isPlaying, 56.dp, accent)
-        Spacer(GlanceModifier.width(8.dp))
-        ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 22.dp) {
-            actionRunCallback<WidgetNextAction>()
+        WeightedControl { PlayPauseButton(s.isPlaying, 56.dp, accent) }
+        WeightedControl {
+            ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
+                actionRunCallback<WidgetNextAction>()
+            }
         }
     }
 }
 
-/** Layout B (completo): carátula grande · título/artista · fila de controles (shuffle…me gusta). */
+/**
+ * Layout B (medio): HORIZONTAL como el mini-player. Carátula cuadrada a la IZQUIERDA que LLENA el alto
+ * del bloque superior (ya no flota con hueco muerto); a su derecha, título y artista (1 línea, elipsis)
+ * en un bloque con defaultWeight que absorbe el ancho sobrante (se recortan antes las letras que los
+ * controles). Los controles van DEBAJO, a todo el ancho —elegido así para que quepan los 5 con áreas de
+ * 48/56 dp (a la derecha del texto solo cabrían 3 en la columna estrecha)—.
+ */
 @Composable
 private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
     val context = LocalContext.current
-    val openNowPlaying = GlanceModifier.clickable(actionStartActivity(openAppIntent(context, nowPlaying = true)))
+    val openNowPlaying = GlanceModifier.clickable(
+        actionStartActivity(openAppIntent(context, nowPlaying = true)),
+        rippleOverride = R.drawable.widget_ripple_none,
+    )
     val innerWidthDp = LocalSize.current.width.value - FULL_HPAD * 2f
     // Los 5 controles con áreas de 48/56 dp solo si hay ancho: 5 celdas de peso; el play necesita >= 56.
     // Si no, se ocultan shuffle y me gusta (no se aprietan ni se cortan): anterior/play/siguiente.
     val showShuffleFav = innerWidthDp >= 280f
+    // La carátula llena el alto del bloque superior (alto − padding − fila de controles): sin flotar.
+    val artDim = (LocalSize.current.height.value - 72f).coerceIn(48f, 120f)
 
     Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = FULL_HPAD.dp, vertical = 8.dp)) {
-        // Bloque superior (carátula grande + texto) toma el espacio libre y queda centrado: sin huecos raros.
         Row(
             modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Artwork(s.artwork, size = 64.dp, corner = 12.dp, modifier = openNowPlaying)
+            Artwork(s.artwork, size = artDim.dp, corner = 12.dp, modifier = openNowPlaying)
             Spacer(GlanceModifier.width(14.dp))
             Column(modifier = GlanceModifier.defaultWeight().then(openNowPlaying)) {
                 Text(s.title, maxLines = 1, style = TitleStyle)
@@ -211,7 +224,10 @@ private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Colo
 @Composable
 private fun LargeLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
     val context = LocalContext.current
-    val openNowPlaying = GlanceModifier.clickable(actionStartActivity(openAppIntent(context, nowPlaying = true)))
+    val openNowPlaying = GlanceModifier.clickable(
+        actionStartActivity(openAppIntent(context, nowPlaying = true)),
+        rippleOverride = R.drawable.widget_ripple_none,
+    )
     val size = LocalSize.current
     val innerWidthDp = size.width.value - LARGE_HPAD * 2f
     val showShuffleFav = innerWidthDp >= 260f
@@ -278,7 +294,10 @@ private fun EmptyState() {
     val context = LocalContext.current
     Column(
         modifier = GlanceModifier.fillMaxSize()
-            .clickable(actionStartActivity(openAppIntent(context, nowPlaying = false)))
+            .clickable(
+                actionStartActivity(openAppIntent(context, nowPlaying = false)),
+                rippleOverride = R.drawable.widget_ripple_none,
+            )
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -329,7 +348,8 @@ private fun ControlButton(
     action: () -> androidx.glance.action.Action,
 ) {
     Box(
-        modifier = GlanceModifier.size(boxSize).cornerRadius(boxSize / 2).clickable(action()),
+        modifier = GlanceModifier.size(boxSize).cornerRadius(boxSize / 2)
+            .clickable(action(), rippleOverride = R.drawable.widget_ripple_none),
         contentAlignment = Alignment.Center,
     ) {
         Image(
@@ -351,7 +371,8 @@ private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, accent: Color) {
     val context = LocalContext.current
     val circle = boxSize - 8.dp // deja un anillo táctil alrededor del círculo visible
     Box(
-        modifier = GlanceModifier.size(boxSize).clickable(actionRunCallback<WidgetPlayPauseAction>()),
+        modifier = GlanceModifier.size(boxSize)
+            .clickable(actionRunCallback<WidgetPlayPauseAction>(), rippleOverride = R.drawable.widget_ripple_none),
         contentAlignment = Alignment.Center,
     ) {
         Box(

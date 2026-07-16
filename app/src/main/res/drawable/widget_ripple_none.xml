@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ripple transparente: se pasa como rippleOverride a los clicables del widget para QUITAR el efecto
+     de toque (resaltado) que Glance pone por defecto. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+</shape>
