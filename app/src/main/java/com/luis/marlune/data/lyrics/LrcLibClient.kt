@@ -91,6 +91,7 @@ class LrcLibClient {
 
     private fun requestOnce(url: String, parse: (String) -> LrcLibResult): LrcLibResult {
         var conn: HttpURLConnection? = null
+        val start = System.currentTimeMillis()
         return try {
             conn = (URL(url).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
@@ -100,14 +101,19 @@ class LrcLibClient {
                 readTimeout = TIMEOUT_MS
             }
             val code = conn.responseCode
-            Log.d(TAG, "  HTTP $code $url")
+            Log.d(TAG, "  HTTP $code (${System.currentTimeMillis() - start}ms) $url")
             when {
                 code in 200..299 -> parse(conn.inputStream.bufferedReader().use { it.readText() })
-                code == 404 -> LrcLibResult.NotFound
-                code >= 500 -> LrcLibResult.ServiceError
-                else -> LrcLibResult.NotFound
+                else -> {
+                    // Drena el cuerpo de error para devolver la conexión al POOL (keep-alive): la
+                    // siguiente petición (p. ej. /search tras un /get 404) REUTILIZA el TLS ya negociado
+                    // en vez de reconectar (~1-2 s menos), y también acelera las letras siguientes.
+                    runCatching { conn.errorStream?.use { it.readBytes() } }
+                    if (code >= 500) LrcLibResult.ServiceError else LrcLibResult.NotFound
+                }
             }
         } catch (e: java.util.concurrent.CancellationException) {
+            conn?.disconnect()
             throw e // NO tragarse la cancelación de corrutina (rompería la estructura de concurrencia)
         } catch (e: Exception) {
             val noConn = e is java.net.UnknownHostException ||
@@ -116,10 +122,11 @@ class LrcLibClient {
                 e is java.net.NoRouteToHostException
             // [DIAG] stack trace completo + a qué estado se mapea, para distinguir sin-red de otro fallo.
             Log.w(TAG, "  EXCEPCIÓN ${e.javaClass.name}: ${e.message} -> ${if (noConn) "NoConnection" else "ServiceError"}", e)
+            conn?.disconnect() // ante fallo SÍ cerramos (la conexión pudo quedar en mal estado)
             if (noConn) LrcLibResult.NoConnection else LrcLibResult.ServiceError
-        } finally {
-            conn?.disconnect()
         }
+        // Camino normal (2xx/404/5xx): NO se llama a disconnect() → la conexión vuelve al pool y se
+        // reutiliza (keep-alive), evitando un handshake TLS por petición.
     }
 
     private fun parseObject(body: String): LrcLibResult {
