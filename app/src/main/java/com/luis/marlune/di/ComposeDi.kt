@@ -10,6 +10,7 @@ import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.data.repository.PlaylistRepository
 import com.luis.marlune.data.datastore.AppPrefsStore
 import com.luis.marlune.data.datastore.LibrarySortStore
+import com.luis.marlune.data.datastore.SearchHistoryStore
 import com.luis.marlune.data.datastore.SettingsStore
 import com.luis.marlune.data.repository.SavedSessionRepository
 import com.luis.marlune.playback.PlaybackRepository
@@ -64,6 +65,12 @@ fun rememberSettingsStore(): SettingsStore {
 fun rememberLibrarySortStore(): LibrarySortStore {
     val app = LocalContext.current.applicationContext as MarluneApplication
     return app.container.librarySortStore
+}
+
+@Composable
+fun rememberSearchHistoryStore(): SearchHistoryStore {
+    val app = LocalContext.current.applicationContext as MarluneApplication
+    return app.container.searchHistoryStore
 }
 
 @Composable

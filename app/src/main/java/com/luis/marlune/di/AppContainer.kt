@@ -6,6 +6,7 @@ import com.luis.marlune.data.database.MarluneDatabase
 import com.luis.marlune.data.datastore.AppPrefsStore
 import com.luis.marlune.data.datastore.LibrarySortStore
 import com.luis.marlune.data.datastore.LyricsFolderStore
+import com.luis.marlune.data.datastore.SearchHistoryStore
 import com.luis.marlune.data.datastore.SessionStore
 import com.luis.marlune.data.datastore.SettingsStore
 import com.luis.marlune.data.lyrics.LrcLibClient
@@ -77,6 +78,9 @@ class AppContainer(context: Context) {
 
     /** Preferencias de Biblioteca (orden de Canciones), persistidas entre sesiones. */
     val librarySortStore = LibrarySortStore(context.applicationContext)
+
+    /** Búsquedas recientes de Buscar (DataStore), persistidas entre sesiones. */
+    val searchHistoryStore = SearchHistoryStore(context.applicationContext)
 
     /**
      * Letras: local (.lrc por SAF) y, SOLO si el usuario activa el opt-in, red (LRCLIB) como último

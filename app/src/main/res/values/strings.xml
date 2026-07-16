@@ -156,6 +156,8 @@
     <string name="search_placeholder">Buscar en tu biblioteca</string>
     <string name="search_clear">Borrar búsqueda</string>
     <string name="search_recent">Búsquedas recientes</string>
+    <string name="search_recent_clear">Borrar</string>
+    <string name="search_recent_remove">Quitar «%1$s»</string>
     <string name="search_no_results">Sin resultados en tu biblioteca</string>
     <string name="search_empty_hint">Busca en tu biblioteca local</string>
 
