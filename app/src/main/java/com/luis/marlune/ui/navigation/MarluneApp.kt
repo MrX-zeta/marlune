@@ -534,6 +534,11 @@ private fun TabsPager(
     }
     HorizontalPager(
         state = pagerState,
+        // Precompone las páginas vecinas (Inicio · Biblioteca · Buscar) fuera de la ruta crítica del
+        // swipe: al deslizar, la página destino ya está construida (sin el coste de primera composición
+        // —lista, carátulas, derivación de álbumes/artistas— cayendo en los frames del gesto). De paso
+        // mantiene vivos sus flujos de datos, evitando la re-derivación por el timeout de WhileSubscribed.
+        beyondViewportPageCount = 1,
         modifier = Modifier.fillMaxSize(),
         key = { it },
     ) { page ->
@@ -550,9 +555,18 @@ private fun TabsPager(
                 onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
                 onOpenPlaylist = { id -> navController.navigate(Routes.playlist(id)) },
                 onSongQueued = onSongQueued,
+                // Con la pre-composición de la página vecina, la entrada de filas se dispara al hacerse
+                // VISIBLE la Biblioteca (página actual del pager), no en la pre-composición fuera de pantalla.
+                active = pagerState.currentPage == MarluneDestination.LIBRARY.ordinal,
                 contentPadding = contentPadding,
             )
-            MarluneDestination.SEARCH.ordinal -> SearchRoute(modifier = Modifier.padding(contentPadding))
+            MarluneDestination.SEARCH.ordinal -> SearchRoute(
+                onOpenAlbums = { navController.navigate(Routes.ALBUMS) },
+                onOpenArtists = { navController.navigate(Routes.ARTISTS) },
+                onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
+                onOpenLiked = { navController.navigate(Routes.LIKED) },
+                modifier = Modifier.padding(contentPadding),
+            )
         }
     }
 }

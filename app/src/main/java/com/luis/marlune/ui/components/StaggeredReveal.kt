@@ -29,20 +29,26 @@ private const val RiseDp = 8
  * `enabled` se captura en la primera composición: al pasar `false` (p. ej. al cambiar de
  * pestaña, donde el contenido entra con un fade rápido y sin coreografía por fila) la fila
  * aparece al instante, y cambiarlo después no perturba una animación en curso.
+ *
+ * `play` (por defecto `true`) retiene la entrada hasta que el contenedor sea visible: útil cuando la
+ * fila se PRE-COMPONE fuera de pantalla (p. ej. una página vecina del pager). Mientras es `false`, la
+ * fila queda oculta (alpha 0) sin animar; al pasar a `true` arranca el fade+rise. Así el destello se
+ * ve al LLEGAR, no durante la pre-composición.
  */
 @Composable
 fun StaggeredReveal(
     index: Int,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    play: Boolean = true,
     content: @Composable () -> Unit,
 ) {
     val reducedMotion = LocalReducedMotion.current
     val animate = remember { enabled && !reducedMotion }
     val reveal = remember { Animatable(if (animate) 0f else 1f) }
 
-    LaunchedEffect(Unit) {
-        if (animate) {
+    LaunchedEffect(play) {
+        if (animate && play) {
             delay(index.coerceAtMost(MaxStaggerIndex) * StaggerStepMs)
             reveal.animateTo(1f, tween(durationMillis = 220, easing = LinearOutSlowInEasing))
         }

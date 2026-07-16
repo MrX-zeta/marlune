@@ -75,6 +75,7 @@ fun LibraryRoute(
     onSongQueued: () -> Unit,
     contentPadding: PaddingValues,
     modifier: Modifier = Modifier,
+    active: Boolean = true,
     viewModel: LibraryViewModel = viewModel(
         factory = LibraryViewModel.factory(
             rememberMusicRepository(),
@@ -93,6 +94,7 @@ fun LibraryRoute(
         uiState = uiState,
         nowPlaying = nowPlaying,
         currentSort = sort,
+        active = active,
         onSelectSort = viewModel::setSort,
         contentPadding = contentPadding,
         onRefresh = viewModel::onRefresh,
@@ -128,6 +130,7 @@ fun LibraryScreen(
     uiState: LibraryUiState,
     nowPlaying: NowPlayingUi,
     currentSort: LibrarySort,
+    active: Boolean,
     onSelectSort: (LibrarySort) -> Unit,
     contentPadding: PaddingValues,
     onRefresh: () -> Unit,
@@ -159,9 +162,16 @@ fun LibraryScreen(
         }
     }
 
-    // El stagger de filas corre una sola vez (primera carga), no en cada cambio de filtro.
-    var firstLoad by remember { mutableStateOf(true) }
-    LaunchedEffect(Unit) { firstLoad = false }
+    // El stagger de filas corre UNA sola vez, la primera vez que la Biblioteca se muestra con contenido
+    // ya cargado (no en la pre-composición fuera de pantalla de la página vecina del pager): mantiene el
+    // swipe fluido y deja ver la entrada al LLEGAR. `enabled` marca "primera carga" (rememberSaveable: no
+    // se repite al volver de Now Playing ni al rotar); `play = active` retiene el destello hasta que la
+    // página es visible. El scroll y el cambio de filtro no re-animan (las filas nuevas entran al instante).
+    var hasRevealed by rememberSaveable { mutableStateOf(false) }
+    val animateEntrance = !hasRevealed
+    LaunchedEffect(active, uiState.isLoading) {
+        if (active && !uiState.isLoading) hasRevealed = true
+    }
 
     // UNA sola LazyColumn persistente: su estado se hoistea aquí y NO se recrea al cambiar de chip.
     // Cambiar de filtro solo cambia el DATA; Compose recicla los slots (keys + contentType).
@@ -259,7 +269,8 @@ fun LibraryScreen(
                         entries = uiState.entriesFor(selectedFilter),
                         filter = selectedFilter,
                         listState = listState,
-                        animateEntrance = firstLoad,
+                        animateEntrance = animateEntrance,
+                        revealVisible = active,
                         nowPlaying = nowPlaying,
                         bottomPadding = listBottomPadding,
                         onEntryClick = onEntryClick,
@@ -281,6 +292,7 @@ private fun LibraryList(
     filter: LibraryFilter,
     listState: LazyListState,
     animateEntrance: Boolean,
+    revealVisible: Boolean,
     nowPlaying: NowPlayingUi,
     bottomPadding: Dp,
     onEntryClick: (LibraryEntry) -> Unit,
@@ -339,7 +351,11 @@ private fun LibraryList(
                 key = { _, entry -> entry.id },
                 contentType = { _, _ -> "libraryRow" },
             ) { index, entry ->
-                StaggeredReveal(index = index, enabled = animateEntrance && index < StaggerVisibleCount) {
+                StaggeredReveal(
+                    index = index,
+                    enabled = animateEntrance && index < StaggerVisibleCount,
+                    play = revealVisible,
+                ) {
                     LibraryRow(
                         entry = entry,
                         coverIcon = coverIcon,
@@ -491,6 +507,7 @@ private fun LibraryScreenPreview() {
             ),
             nowPlaying = NowPlayingUi(songId = 102L, isPlaying = true),
             currentSort = LibrarySort.TITLE,
+            active = true,
             onSelectSort = {},
             contentPadding = PaddingValues(0.dp),
             onRefresh = {},
