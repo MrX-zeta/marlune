@@ -166,16 +166,29 @@ fun LibraryScreen(
     // UNA sola LazyColumn persistente: su estado se hoistea aquí y NO se recrea al cambiar de chip.
     // Cambiar de filtro solo cambia el DATA; Compose recicla los slots (keys + contentType).
     val listState = rememberLazyListState()
-    // Al CAMBIAR de categoría se vuelve arriba (evita arrastrar el offset de una lista a otra). El
-    // último filtro para el que ya se subió se recuerda con rememberSaveable, así SOBREVIVE a la
-    // restauración del estado: al volver de Now Playing con el mismo chip, el filtro coincide y NO se
-    // resetea la posición restaurada (antes el LaunchedEffect se relanzaba en la recomposición nueva y
-    // borraba el scroll). Solo sube a 0 cuando el chip cambia de verdad. O(1).
+    // Al CAMBIAR de categoría (chip) o de ORDEN (menú de orden) se REORDENA la lista → se vuelve ARRIBA
+    // (el índice viejo ya apunta a otra canción). Se recuerda el último con rememberSaveable para NO
+    // resetear al RESTAURAR (volver de Now Playing con el mismo chip/orden): solo sube a 0 cuando cambian
+    // de verdad. O(1).
     var lastScrolledFilter by rememberSaveable { mutableStateOf(selectedFilter) }
-    LaunchedEffect(selectedFilter) {
-        if (selectedFilter != lastScrolledFilter) {
+    var lastScrolledSort by rememberSaveable { mutableStateOf(currentSort) }
+    LaunchedEffect(selectedFilter, currentSort) {
+        if (selectedFilter != lastScrolledFilter || currentSort != lastScrolledSort) {
             listState.scrollToItem(0)
             lastScrolledFilter = selectedFilter
+            lastScrolledSort = currentSort
+        }
+    }
+    // Al mostrar Canciones (entrar a la pestaña o VOLVER del reproductor) y al cambiar la pista actual,
+    // desplaza la lista hasta la canción que suena, para verla sin tener que buscarla. Solo en Canciones
+    // (los ids de álbum/artista viven en otro espacio). Keyed solo en songId → no choca con el subir-a-0
+    // del cambio de orden/filtro (ese no cambia songId).
+    LaunchedEffect(nowPlaying.songId) {
+        if (selectedFilter == LibraryFilter.SONGS) {
+            val id = nowPlaying.songId
+            val index = if (id == null) -1
+            else uiState.entriesFor(LibraryFilter.SONGS).indexOfFirst { it.id == id }
+            if (index >= 0) listState.scrollToItem(index)
         }
     }
 
