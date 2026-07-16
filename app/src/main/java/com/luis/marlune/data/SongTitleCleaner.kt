@@ -86,12 +86,22 @@ object SongTitleCleaner {
 
     private fun clean(song: Song): Song {
         val usable = isUsableArtist(song.artist, song.displayName)
-        // Solo el tag del PROPIO archivo (desglosado por comas/&/feat) reconoce artistas. Sin conjunto de
-        // biblioteca: el título es estable y no depende de qué otras canciones existan.
+        // Solo el tag del PROPIO archivo reconoce artistas (determinista: no depende de otras canciones).
         val tagParts = if (usable) artistNameParts(song.artist) else emptySet()
+        val tagWords = if (usable) flat(song.artist).split(' ').filter { it.isNotEmpty() }.toSet() else emptySet()
         fun isArtistSeg(seg: String): Boolean {
             val f = flat(seg)
-            return f.isNotEmpty() && f in tagParts
+            if (f.isEmpty()) return false
+            if (f in tagParts) return true // nombre exacto (desglosado por comas/&/feat)
+            val words = f.split(' ').filter { it.isNotEmpty() }
+            // Nombre multi-palabra cuyas palabras están TODAS en el tag ("Hans Zimmer" en "Hans Zimmer - Topic").
+            if (words.size >= 2 && tagWords.containsAll(words)) return true
+            // Nombre de una palabra (>=5) que ES o EMPIEZA una palabra del tag: canales derivados del
+            // artista ("Survivor" ⊂ "survivorVEVO", "<Artista>Official/Topic"…).
+            if (words.size == 1 && words[0].length >= 5 && tagWords.any { it == words[0] || it.startsWith(words[0]) }) {
+                return true
+            }
+            return false
         }
 
         var artist = song.artist
@@ -123,16 +133,17 @@ object SongTitleCleaner {
             // Candidatos = los que NO son artistas conocidos; título = el de mayor puntuación
             // (titleness + boost); empate → el último (convención Artista-Título de YouTube).
             val candidates = segs.filterNot { isArtistSeg(it.first) }.ifEmpty { segs }
-            // Título = mayor puntuación (titleness + boost); empate → MÁS palabras (una frase-título suele
-            // ser más larga que un nombre de artista); empate final → el último (convención Artista-Título).
-            title = candidates.withIndex()
-                .maxWith(
-                    compareBy(
-                        { titleness(it.value.first) + it.value.second },
-                        { wordCount(it.value.first) },
-                        { it.index },
-                    ),
-                ).value.first
+            // Empate (misma puntuación): con 2 segmentos gana el ÚLTIMO (convención "Artista - Título":
+            // "Black Sabbath - Paranoid" → "Paranoid"). Con 3+ segmentos (formato "Contexto • Canción •
+            // Artista" de canales tributo) desempata por MÁS palabras —la canción suele ser más larga que
+            // el nombre del artista— y luego el último: "Rocky IV • Burning Heart • Survivor" → "Burning Heart".
+            title = candidates.withIndex().maxWith(
+                if (candidates.size >= 3) {
+                    compareBy({ titleness(it.value.first) + it.value.second }, { wordCount(it.value.first) }, { it.index })
+                } else {
+                    compareBy({ titleness(it.value.first) + it.value.second }, { it.index })
+                },
+            ).value.first
             if (!usable) {
                 artist = segs.map { it.first }.firstOrNull { isArtistSeg(it) }
                     ?: segs.filter { it.first != title }.minByOrNull { titleness(it.first) }?.first
@@ -170,7 +181,7 @@ object SongTitleCleaner {
         return score
     }
 
-    /** Nº de palabras significativas (para el desempate: los títulos suelen ser más largos). */
+    /** Nº de palabras (desempate solo con 3+ segmentos: la canción suele ser más larga que el artista). */
     private fun wordCount(seg: String): Int = flat(seg).split(' ').count { it.isNotEmpty() }
 
     /** Un segmento es metadato si es un género, contiene un marcador fuerte, o TERMINA en un descriptor. */
