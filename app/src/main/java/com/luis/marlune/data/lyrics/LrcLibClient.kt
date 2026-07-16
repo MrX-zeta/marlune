@@ -110,16 +110,13 @@ class LrcLibClient {
         } catch (e: java.util.concurrent.CancellationException) {
             throw e // NO tragarse la cancelación de corrutina (rompería la estructura de concurrencia)
         } catch (e: Exception) {
-            Log.d(TAG, "  EXCEPCIÓN ${e.javaClass.simpleName}: ${e.message}")
-            if (e is java.net.UnknownHostException ||
+            val noConn = e is java.net.UnknownHostException ||
                 e is java.net.ConnectException ||
                 e is java.net.SocketTimeoutException ||
                 e is java.net.NoRouteToHostException
-            ) {
-                LrcLibResult.NoConnection // no hay red / DNS / timeout
-            } else {
-                LrcLibResult.ServiceError // otra causa (respuesta corrupta, etc.)
-            }
+            // [DIAG] stack trace completo + a qué estado se mapea, para distinguir sin-red de otro fallo.
+            Log.w(TAG, "  EXCEPCIÓN ${e.javaClass.name}: ${e.message} -> ${if (noConn) "NoConnection" else "ServiceError"}", e)
+            if (noConn) LrcLibResult.NoConnection else LrcLibResult.ServiceError
         } finally {
             conn?.disconnect()
         }
@@ -168,7 +165,7 @@ class LrcLibClient {
 
     private companion object {
         const val BASE = "https://lrclib.net/api"
-        const val TIMEOUT_MS = 6_000
+        const val TIMEOUT_MS = 15_000 // red lenta/cargada: 6 s se quedaba corto y daba "sin conexión"
         const val MAX_ATTEMPTS = 2 // 1 intento + 1 reintento ante fallo transitorio de conexión
         const val RETRY_DELAY_MS = 500L
         const val USER_AGENT = "Marlune/1.0 (reproductor de musica local; https://github.com/luis/marlune)"

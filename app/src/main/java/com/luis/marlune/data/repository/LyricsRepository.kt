@@ -105,6 +105,7 @@ class LyricsRepository(
      * Solo se hace UNA petición por canción (mientras haya algo cacheado de red no se repite).
      */
     suspend fun resolve(song: Song, allowNetwork: Boolean): LyricsResolution = withContext(Dispatchers.IO) {
+        Log.d(LYRICS_TAG, "resolve id=${song.id} allowNetwork=$allowNetwork title='${song.title}' artist='${song.artist}' dur=${song.durationMs / 1000}s")
         val local = lyricsFor(song)
         if (local != null && local.synced) return@withContext LyricsResolution.Found(local)
 
