@@ -3,7 +3,10 @@ package com.luis.marlune.ui.settings
 import android.os.SystemClock
 import android.text.format.Formatter
 import android.widget.Toast
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,6 +22,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bedtime
@@ -165,7 +172,7 @@ class SettingsViewModel(
 }
 
 @Composable
-fun SettingsRoute(onBack: () -> Unit, contentPadding: PaddingValues) {
+fun SettingsRoute(onBack: () -> Unit, contentPadding: PaddingValues, highlightLyrics: Boolean = false) {
     val vm: SettingsViewModel = viewModel(
         factory = SettingsViewModel.factory(
             rememberSettingsStore(),
@@ -193,6 +200,7 @@ fun SettingsRoute(onBack: () -> Unit, contentPadding: PaddingValues) {
         onSetShortClipSeconds = vm::setShortClipMinSeconds,
         onBack = onBack,
         contentPadding = contentPadding,
+        highlightLyrics = highlightLyrics,
     )
 }
 
@@ -211,10 +219,33 @@ private fun SettingsScreen(
     onSetShortClipSeconds: (Int) -> Unit,
     onBack: () -> Unit,
     contentPadding: PaddingValues,
+    highlightLyrics: Boolean = false,
 ) {
     val context = LocalContext.current
     var showConfirm by remember { mutableStateOf(false) }
     var showTimerDialog by remember { mutableStateOf(false) }
+
+    // Resaltado de la card de Letras al llegar desde "Buscar letras en internet": auto-scroll + parpadeo.
+    // Scroll DETERMINISTA: medimos la posición real de la card y de la ventana de scroll y desplazamos
+    // hasta ella (bringIntoView solo movía lo mínimo, y si estaba algo visible, no hacía nada).
+    val scrollState = rememberScrollState()
+    val density = LocalDensity.current
+    var viewportTopY by remember { mutableStateOf(0f) }
+    var lyricsCardTopY by remember { mutableStateOf(0f) }
+    val lyricsBlink = remember { Animatable(0f) }
+    LaunchedEffect(highlightLyrics) {
+        if (highlightLyrics) {
+            // Espera a que Ajustes termine de ENTRAR (transición Now Playing → shell) y esté medido.
+            delay(380)
+            val margin = with(density) { 16.dp.toPx() }
+            val target = (scrollState.value + (lyricsCardTopY - viewportTopY) - margin).roundToInt().coerceAtLeast(0)
+            scrollState.animateScrollTo(target)
+            repeat(3) {
+                lyricsBlink.animateTo(1f, tween(180))
+                lyricsBlink.animateTo(0f, tween(220))
+            }
+        }
+    }
 
     // Estado de notificaciones (solo lectura): se refresca al volver de los ajustes del sistema.
     var notificationsEnabled by remember { mutableStateOf(areNotificationsEnabled(context)) }
@@ -302,7 +333,8 @@ private fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .verticalScroll(rememberScrollState()),
+                    .onGloballyPositioned { viewportTopY = it.localToRoot(Offset.Zero).y }
+                    .verticalScroll(scrollState),
             ) {
                 // Grupo REPRODUCCIÓN: temporizador de apagado.
                 StaggeredReveal(index = 0) {
@@ -399,6 +431,13 @@ private fun SettingsScreen(
                     SettingsGroup(
                         label = stringResource(R.string.settings_lyrics_section),
                         icon = Icons.Rounded.Lyrics,
+                        cardModifier = Modifier
+                            .onGloballyPositioned { lyricsCardTopY = it.localToRoot(Offset.Zero).y }
+                            .border(
+                                width = 2.dp,
+                                color = MarluneTheme.colors.accent.copy(alpha = lyricsBlink.value),
+                                shape = RoundedCornerShape(20.dp),
+                            ),
                     ) {
                         SettingRow(
                             icon = Icons.Rounded.Language,
@@ -569,6 +608,7 @@ private fun SleepTimerDialog(
 private fun SettingsGroup(
     label: String,
     icon: ImageVector,
+    cardModifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
@@ -591,7 +631,7 @@ private fun SettingsGroup(
             )
         }
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = cardModifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
             color = MarluneTheme.colors.surfaceElevated,
         ) {
