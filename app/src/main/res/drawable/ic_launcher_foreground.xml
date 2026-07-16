@@ -13,9 +13,9 @@
         android:strokeWidth="5" />
 
     <!-- Barras de onda -->
-    <path android:pathData="M44,49 V59" android:strokeColor="#6FD8C6" android:strokeWidth="3.5" android:strokeLineCap="round" />
-    <path android:pathData="M49,45 V63" android:strokeColor="#6FD8C6" android:strokeWidth="3.5" android:strokeLineCap="round" />
-    <path android:pathData="M54,41.5 V66.5" android:strokeColor="#6FD8C6" android:strokeWidth="3.5" android:strokeLineCap="round" />
-    <path android:pathData="M59,46 V62" android:strokeColor="#6FD8C6" android:strokeWidth="3.5" android:strokeLineCap="round" />
-    <path android:pathData="M64,49.5 V58.5" android:strokeColor="#6FD8C6" android:strokeWidth="3.5" android:strokeLineCap="round" />
+    <path android:pathData="M41,49.5 V58.5" android:strokeColor="#6FD8C6" android:strokeWidth="3" android:strokeLineCap="round" />
+    <path android:pathData="M47.5,45 V63" android:strokeColor="#6FD8C6" android:strokeWidth="3" android:strokeLineCap="round" />
+    <path android:pathData="M54,41.5 V66.5" android:strokeColor="#6FD8C6" android:strokeWidth="3" android:strokeLineCap="round" />
+    <path android:pathData="M60.5,46.5 V61.5" android:strokeColor="#6FD8C6" android:strokeWidth="3" android:strokeLineCap="round" />
+    <path android:pathData="M67,50 V58" android:strokeColor="#6FD8C6" android:strokeWidth="3" android:strokeLineCap="round" />
 </vector>

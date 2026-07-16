@@ -32,6 +32,7 @@ import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.PlayCircleOutline
 import androidx.compose.material.icons.rounded.Sync
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
@@ -82,6 +83,7 @@ import com.luis.marlune.ui.permissions.areNotificationsEnabled
 import com.luis.marlune.ui.permissions.openAppNotificationSettings
 import com.luis.marlune.ui.components.StaggeredReveal
 import com.luis.marlune.ui.theme.MarluneTheme
+import com.luis.marlune.ui.widget.WidgetPinner
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -430,6 +432,36 @@ private fun SettingsScreen(
                                             tint = MarluneTheme.colors.accent,
                                         )
                                     }
+                                }
+                            },
+                        )
+                    }
+                }
+                // Grupo PANTALLA DE INICIO: anclar el widget. En launchers que no lo soportan, se
+                // muestra la pista manual en vez de un botón que no hace nada.
+                val widgetSupported = remember { WidgetPinner.isSupported(context) }
+                StaggeredReveal(index = 3) {
+                    SettingsGroup(
+                        label = stringResource(R.string.settings_home_section),
+                        icon = Icons.Rounded.Widgets,
+                    ) {
+                        SettingRow(
+                            icon = Icons.Rounded.Widgets,
+                            title = stringResource(R.string.settings_add_widget_title),
+                            description = stringResource(
+                                if (widgetSupported) R.string.settings_add_widget_desc
+                                else R.string.settings_add_widget_manual,
+                            ),
+                            onClick = if (widgetSupported) {
+                                { WidgetPinner.requestPin(context) }
+                            } else null,
+                            trailing = {
+                                if (widgetSupported) {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                        contentDescription = null,
+                                        tint = MarluneTheme.colors.textTertiary,
+                                    )
                                 }
                             },
                         )
