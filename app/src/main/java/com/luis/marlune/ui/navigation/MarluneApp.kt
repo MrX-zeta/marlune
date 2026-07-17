@@ -10,6 +10,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -47,7 +48,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -431,7 +431,21 @@ private fun MarluneNavHost(
     onSongQueued: () -> Unit,
     pagerState: PagerState,
 ) {
-    NavHost(navController = navController, startDestination = Routes.TABS) {
+    // Transiciones de pantalla cortas. La de SALIDA (y pop-salida) es la más breve a propósito: la
+    // pantalla saliente queda por encima durante la animación y, si es larga, se come el toque siguiente
+    // (obliga a tocar dos veces) o lo desvía a una fila —abriendo un detalle "fantasma"—. Acortarla cierra
+    // esa ventana. Respeta el movimiento reducido (cambio instantáneo).
+    val reducedMotion = LocalReducedMotion.current
+    val enterSpec = if (reducedMotion) snap<Float>() else tween<Float>(150, easing = LinearOutSlowInEasing)
+    val exitSpec = if (reducedMotion) snap<Float>() else tween<Float>(90, easing = FastOutLinearInEasing)
+    NavHost(
+        navController = navController,
+        startDestination = Routes.TABS,
+        enterTransition = { fadeIn(enterSpec) },
+        exitTransition = { fadeOut(exitSpec) },
+        popEnterTransition = { fadeIn(enterSpec) },
+        popExitTransition = { fadeOut(exitSpec) },
+    ) {
         composable(Routes.TABS) {
             TabsPager(
                 pagerState = pagerState,
@@ -549,16 +563,16 @@ private fun TabsPager(
     ) { page ->
         when (page) {
             MarluneDestination.HOME.ordinal -> HomeRoute(
-                onOpenLiked = { navController.navigateOnce(Routes.LIKED) },
-                onOpenRecentlyAdded = { navController.navigateOnce(Routes.RECENTLY_ADDED) },
-                onSeeAllRecent = { navController.navigateOnce(Routes.HISTORY) },
-                onOpenSettings = { navController.navigateOnce(Routes.SETTINGS) },
+                onOpenLiked = { navController.navigateTab(Routes.LIKED) },
+                onOpenRecentlyAdded = { navController.navigateTab(Routes.RECENTLY_ADDED) },
+                onSeeAllRecent = { navController.navigateTab(Routes.HISTORY) },
+                onOpenSettings = { navController.navigateTab(Routes.SETTINGS) },
                 contentPadding = contentPadding,
             )
             MarluneDestination.LIBRARY.ordinal -> LibraryRoute(
-                onOpenAlbum = { id -> navController.navigateOnce(Routes.album(id)) },
-                onOpenArtist = { id -> navController.navigateOnce(Routes.artist(id)) },
-                onOpenPlaylist = { id -> navController.navigateOnce(Routes.playlist(id)) },
+                onOpenAlbum = { id -> navController.navigateTab(Routes.album(id)) },
+                onOpenArtist = { id -> navController.navigateTab(Routes.artist(id)) },
+                onOpenPlaylist = { id -> navController.navigateTab(Routes.playlist(id)) },
                 onSongQueued = onSongQueued,
                 // Con la pre-composición de la página vecina, la entrada de filas se dispara al hacerse
                 // VISIBLE la Biblioteca (página actual del pager), no en la pre-composición fuera de pantalla.
@@ -566,10 +580,10 @@ private fun TabsPager(
                 contentPadding = contentPadding,
             )
             MarluneDestination.SEARCH.ordinal -> SearchRoute(
-                onOpenAlbums = { navController.navigateOnce(Routes.ALBUMS) },
-                onOpenArtists = { navController.navigateOnce(Routes.ARTISTS) },
-                onOpenPlaylists = { navController.navigateOnce(Routes.PLAYLISTS) },
-                onOpenLiked = { navController.navigateOnce(Routes.LIKED) },
+                onOpenAlbums = { navController.navigateTab(Routes.ALBUMS) },
+                onOpenArtists = { navController.navigateTab(Routes.ARTISTS) },
+                onOpenPlaylists = { navController.navigateTab(Routes.PLAYLISTS) },
+                onOpenLiked = { navController.navigateTab(Routes.LIKED) },
                 modifier = Modifier.padding(contentPadding),
             )
         }
@@ -577,14 +591,27 @@ private fun TabsPager(
 }
 
 /**
- * Navega una sola vez por gesto: solo si la pantalla actual está RESUMED (no a mitad de una
- * transición). Sin esta guarda, tocar dos accesos casi a la vez —o el mismo dos veces— encola varias
- * navegaciones en carrera y se aterriza en un destino equivocado/obsoleto hasta volver a entrar. Es
- * el patrón recomendado para evitar la doble-navegación en Navigation Compose.
+ * Navega dedupando el destino en la cima ([launchSingleTop]): toques repetidos al MISMO acceso (o el
+ * mismo álbum/artista/lista) NO apilan pantallas duplicadas —el destello de contenido "fantasma" venía
+ * de esos duplicados encimados—. Ir a un destino DISTINTO nunca se bloquea, así el cambio entre accesos
+ * sigue siendo instantáneo (a diferencia de gatear por el ciclo de vida RESUMED, que se comía el primer
+ * toque durante la animación de entrada).
  */
 private fun NavHostController.navigateOnce(route: String) {
-    if (currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
-        navigate(route)
+    navigate(route) { launchSingleTop = true }
+}
+
+/**
+ * Navegación a un acceso de NIVEL 1 (los que cuelgan directo de las pestañas: Álbumes, Artistas,
+ * Listas, Me gusta, Añadidas, historial y los detalles abiertos desde Biblioteca). Reemplaza al
+ * hermano en la cima ([popUpTo] TABS + [launchSingleTop]): tocar varios accesos seguidos NO apila una
+ * pila de pantallas —de la que salían las listas "fantasma"—, se aterriza limpio en el último y el
+ * retroceso vuelve siempre a las pestañas. Ir a otro acceso nunca se bloquea (fluidez intacta).
+ */
+private fun NavHostController.navigateTab(route: String) {
+    navigate(route) {
+        popUpTo(Routes.TABS) { }
+        launchSingleTop = true
     }
 }
 
