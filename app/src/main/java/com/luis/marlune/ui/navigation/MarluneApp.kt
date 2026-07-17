@@ -47,6 +47,7 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -469,18 +470,22 @@ private fun MarluneNavHost(
             AlbumsRoute(
                 contentPadding = contentPadding,
                 onBack = navController::popBackStack,
-                onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
+                onOpenAlbum = { id -> navController.navigateOnce(Routes.album(id)) },
             )
         }
         composable(Routes.ARTISTS) {
             ArtistsRoute(
                 contentPadding = contentPadding,
                 onBack = navController::popBackStack,
-                onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
+                onOpenArtist = { id -> navController.navigateOnce(Routes.artist(id)) },
             )
         }
         composable(Routes.PLAYLISTS) {
-            PlaylistsRoute(contentPadding = contentPadding, onBack = navController::popBackStack)
+            PlaylistsRoute(
+                contentPadding = contentPadding,
+                onBack = navController::popBackStack,
+                onOpenPlaylist = { id -> navController.navigateOnce(Routes.playlist(id)) },
+            )
         }
         composable(
             route = Routes.ALBUM_DETAIL,
@@ -544,16 +549,16 @@ private fun TabsPager(
     ) { page ->
         when (page) {
             MarluneDestination.HOME.ordinal -> HomeRoute(
-                onOpenLiked = { navController.navigate(Routes.LIKED) },
-                onOpenRecentlyAdded = { navController.navigate(Routes.RECENTLY_ADDED) },
-                onSeeAllRecent = { navController.navigate(Routes.HISTORY) },
-                onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenLiked = { navController.navigateOnce(Routes.LIKED) },
+                onOpenRecentlyAdded = { navController.navigateOnce(Routes.RECENTLY_ADDED) },
+                onSeeAllRecent = { navController.navigateOnce(Routes.HISTORY) },
+                onOpenSettings = { navController.navigateOnce(Routes.SETTINGS) },
                 contentPadding = contentPadding,
             )
             MarluneDestination.LIBRARY.ordinal -> LibraryRoute(
-                onOpenAlbum = { id -> navController.navigate(Routes.album(id)) },
-                onOpenArtist = { id -> navController.navigate(Routes.artist(id)) },
-                onOpenPlaylist = { id -> navController.navigate(Routes.playlist(id)) },
+                onOpenAlbum = { id -> navController.navigateOnce(Routes.album(id)) },
+                onOpenArtist = { id -> navController.navigateOnce(Routes.artist(id)) },
+                onOpenPlaylist = { id -> navController.navigateOnce(Routes.playlist(id)) },
                 onSongQueued = onSongQueued,
                 // Con la pre-composición de la página vecina, la entrada de filas se dispara al hacerse
                 // VISIBLE la Biblioteca (página actual del pager), no en la pre-composición fuera de pantalla.
@@ -561,13 +566,25 @@ private fun TabsPager(
                 contentPadding = contentPadding,
             )
             MarluneDestination.SEARCH.ordinal -> SearchRoute(
-                onOpenAlbums = { navController.navigate(Routes.ALBUMS) },
-                onOpenArtists = { navController.navigate(Routes.ARTISTS) },
-                onOpenPlaylists = { navController.navigate(Routes.PLAYLISTS) },
-                onOpenLiked = { navController.navigate(Routes.LIKED) },
+                onOpenAlbums = { navController.navigateOnce(Routes.ALBUMS) },
+                onOpenArtists = { navController.navigateOnce(Routes.ARTISTS) },
+                onOpenPlaylists = { navController.navigateOnce(Routes.PLAYLISTS) },
+                onOpenLiked = { navController.navigateOnce(Routes.LIKED) },
                 modifier = Modifier.padding(contentPadding),
             )
         }
+    }
+}
+
+/**
+ * Navega una sola vez por gesto: solo si la pantalla actual está RESUMED (no a mitad de una
+ * transición). Sin esta guarda, tocar dos accesos casi a la vez —o el mismo dos veces— encola varias
+ * navegaciones en carrera y se aterriza en un destino equivocado/obsoleto hasta volver a entrar. Es
+ * el patrón recomendado para evitar la doble-navegación en Navigation Compose.
+ */
+private fun NavHostController.navigateOnce(route: String) {
+    if (currentBackStackEntry?.lifecycle?.currentState == Lifecycle.State.RESUMED) {
+        navigate(route)
     }
 }
 

@@ -44,6 +44,7 @@ import com.luis.marlune.ui.components.reorderableItem
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
+import com.luis.marlune.domain.model.Playlist
 import com.luis.marlune.domain.model.Song
 import com.luis.marlune.ui.components.ContextMenuItem
 import com.luis.marlune.ui.library.AddToPlaylistSheet
@@ -271,4 +272,13 @@ fun Artist.toLibraryEntry(): LibraryEntry =
         title = name,
         subtitle = "$songCount ${if (songCount == 1) "canción" else "canciones"}",
         artworkUri = null,
+    )
+
+fun Playlist.toLibraryEntry(): LibraryEntry =
+    LibraryEntry(
+        id = id,
+        title = name,
+        subtitle = "$songCount ${if (songCount == 1) "canción" else "canciones"}",
+        artworkUri = null,
+        playlistCovers = covers,
     )
