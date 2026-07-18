@@ -12,6 +12,7 @@ import com.luis.marlune.data.lyrics.LrcLibResult
 import com.luis.marlune.data.lyrics.LrcParser
 import com.luis.marlune.data.lyrics.LyricsCacheStats
 import com.luis.marlune.data.lyrics.NetworkLyricsCache
+import com.luis.marlune.data.lyrics.normalizeForMatch
 import com.luis.marlune.domain.model.LyricLine
 import com.luis.marlune.domain.model.Lyrics
 import com.luis.marlune.domain.model.LyricsFolderRequest
@@ -26,8 +27,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.text.Normalizer
-import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
 /** Resultado de conceder una carpeta en el contexto de una canción. */
@@ -310,12 +309,8 @@ class LyricsRepository(
         return e
     }
 
-    private fun normalize(raw: String): String {
-        var s = raw.lowercase(Locale.ROOT)
-        s = Normalizer.normalize(s, Normalizer.Form.NFD).replace(Regex("\\p{Mn}+"), "")
-        s = s.replace(Regex("(?:[_\\-\\s]*(?:private|lyrics?|karaoke)|\\s*\\(\\d+\\))+\\s*$"), "")
-        return s.replace(Regex("[^a-z0-9]+"), " ").trim()
-    }
+    // Delegado a la implementación ÚNICA compartida con LrcLibClient (ver LyricsTextMatch).
+    private fun normalize(raw: String): String = normalizeForMatch(raw)
 
     private fun buildLrcIndex(tree: Uri): List<LrcEntry> {
         val out = ArrayList<LrcEntry>()
