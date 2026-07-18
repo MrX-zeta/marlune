@@ -8,23 +8,21 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.ui.library.LibraryFilter
 import com.luis.marlune.ui.theme.LocalReducedMotion
@@ -32,22 +30,18 @@ import com.luis.marlune.ui.theme.MarluneTheme
 
 private const val ChipAnimMillis = 160
 private val ChipHeight = 36.dp
-private val ChipGap = 4.dp // hueco entre chips (ajustado para que quepan mejor)
-private val ChipRowSidePadding = 16.dp // respiro en ambos extremos: el 1.º/último chip no se recorta
+private val ChipGap = 6.dp // hueco entre chips (compacto para que quepan los 4)
+private val ChipRowSidePadding = 12.dp // respiro a los lados: "Listas"/"Canciones" no quedan pegados al borde
+private val ChipInnerPadding = 6.dp // padding interno mínimo del texto dentro de su pastilla
 
 /**
- * Chips de filtro con selección instantánea y robusta.
+ * Chips de filtro en una fila FIJA (sin scroll horizontal): los 4 se reparten el ancho con `weight`
+ * igual, así siempre caben completos —también en pantallas estrechas— sin recortar texto ni desbordar.
+ * Al no ser deslizable, no atrapa el gesto: el swipe entre pantallas funciona también sobre los chips.
  *
- * Sin medición de posiciones ni indicador global: cada chip pinta SU PROPIO fondo ("pill") cuando
- * está seleccionado y lo apaga cuando no, animando color/alfa por chip con `animateColorAsState`
- * (retargetable), más el texto de secundario → acento. Así, en toques rápidos, cada chip refleja su
- * estado al instante y el anterior se apaga; nada "persigue" ni se encola, y no hay bucle
- * scroll↔medición↔recomposición.
- *
- * Los chips viven en un `LazyRow`; para traer el seleccionado a la vista se usa
- * `animateScrollToItem(selectedIndex)` en un efecto keyed SOLO en el índice (nunca en un valor
- * medido). La etiqueta va en una sola línea y el chip se dimensiona a su contenido. Sin ripple.
- * Respeta el movimiento reducido (todo instantáneo).
+ * Selección instantánea y robusta: cada chip pinta SU PROPIO fondo ("pill") cuando está seleccionado
+ * (acento tenue, animando color/alfa por chip con `animateColorAsState`, retargetable) y el texto pasa
+ * de secundario a acento. Sin medición, sin auto-scroll y sin ripple. Respeta el movimiento reducido.
  */
 @Composable
 fun LibraryFilterChips(
@@ -56,43 +50,30 @@ fun LibraryFilterChips(
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = LocalReducedMotion.current
-    val filters = LibraryFilter.entries
-    val selectedIndex = filters.indexOf(selected)
-
-    val listState = rememberLazyListState()
-    // Scroll-into-view por ÍNDICE (desacoplado de cualquier medición): sin bucle de realimentación.
-    LaunchedEffect(selectedIndex) {
-        if (reducedMotion) listState.scrollToItem(selectedIndex) else listState.animateScrollToItem(selectedIndex)
-    }
-
-    // Fila FIJA (userScrollEnabled = false): al no consumir el arrastre horizontal, el swipe entre
-    // pestañas (HorizontalPager) gana el gesto también cuando el dedo pasa sobre los chips. El
-    // contentPadding lateral + la separación ajustada evitan que "Listas"/"Canciones" se recorten.
-    LazyRow(
-        state = listState,
-        modifier = modifier,
-        userScrollEnabled = false,
+    Row(
+        modifier = modifier.fillMaxWidth().padding(horizontal = ChipRowSidePadding),
         horizontalArrangement = Arrangement.spacedBy(ChipGap),
-        contentPadding = PaddingValues(horizontal = ChipRowSidePadding),
     ) {
-        items(filters, key = { it }, contentType = { "filterChip" }) { filter ->
+        LibraryFilter.entries.forEach { filter ->
             FilterChip(
                 label = stringResource(filter.labelRes),
                 selected = filter == selected,
                 reducedMotion = reducedMotion,
                 onClick = { onSelect(filter) },
+                modifier = Modifier.weight(1f),
             )
         }
     }
 }
 
-/** Un chip: su fondo (pill) y el color del texto animan por sí mismos según [selected]. Sin medir nada. */
+/** Un chip (celda de ancho igual): su fondo (pill) y el color del texto animan según [selected]. */
 @Composable
-private fun FilterChip(
+private fun RowScope.FilterChip(
     label: String,
     selected: Boolean,
     reducedMotion: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val pill = MarluneTheme.colors.accentMuted
     val bgColor by animateColorAsState(
@@ -107,7 +88,7 @@ private fun FilterChip(
     )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(ChipHeight)
             .clip(RoundedCornerShape(50))
             .background(bgColor)
@@ -115,7 +96,7 @@ private fun FilterChip(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null, // sin ripple, como estaba
             ) { onClick() }
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = ChipInnerPadding),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -124,6 +105,8 @@ private fun FilterChip(
             color = textColor,
             maxLines = 1,
             softWrap = false,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth(),
         )
     }
 }
