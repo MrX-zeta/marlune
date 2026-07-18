@@ -51,9 +51,12 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.luis.marlune.R
 import com.luis.marlune.playback.TrackChange
 import com.luis.marlune.ui.components.PressableCard
@@ -135,6 +138,13 @@ fun MiniPlayer(
     // State layer de la card, controlado por el detector: solo se ilumina en tap real, no al deslizar.
     val interactionSource = remember { MutableInteractionSource() }
     var cardWidthPx by remember { mutableStateOf(0f) }
+    val context = LocalContext.current
+
+    // Miniatura MOSTRADA: durante el slide de cambio de pista se mantiene la ANTERIOR y se sustituye por
+    // la nueva SOLO al terminar la animación (ver el finally de abajo), para no colar la imagen a media
+    // animación. La nueva se precarga en caché de memoria mientras tanto (efecto de más abajo).
+    var displayedArtworkUri by remember { mutableStateOf(uiState.artworkUri) }
+    var holdArtworkForSlide by remember { mutableStateOf(false) }
 
     // Misma fuente única que Now Playing: la dirección sale del cambio de pista del player (reason
     // de Media3). NEXT/PREVIOUS deslizan; DIRECT (carga por selección) NO desliza (crossfade).
@@ -150,6 +160,7 @@ fun MiniPlayer(
                     TrackChange.DIRECT -> null // carga directa: sin slide
                 }
                 if (forward != null) {
+                    holdArtworkForSlide = true // retén la miniatura anterior durante el slide
                     // La confirmación es una animación de SOLTAR: corre en su propia corrutina y
                     // escribe liveOffsetX (vía offsetX). runTrackSlideAnimation se queda idéntico; solo
                     // se le siembra la posición actual del dedo y se refleja su valor en el estado.
@@ -161,11 +172,28 @@ fun MiniPlayer(
                             runTrackSlideAnimation(forward, offsetX, cardWidthPx, reducedMotion)
                         } finally {
                             mirror.cancel()
+                            // Slide terminado (o cancelado por un nuevo gesto): muestra ya la carátula actual.
+                            displayedArtworkUri = latestUiState.value.artworkUri
+                            holdArtworkForSlide = false
                         }
                     }
                 }
             }
         }
+    }
+
+    // Precarga la carátula nueva en la caché de memoria de Coil (misma clave estable que TrackThumbnail),
+    // así al sustituirla al final del slide el cambio es instantáneo. Si no hay slide en curso (carga
+    // directa/primera/metadatos), la muestra al instante.
+    LaunchedEffect(uiState.artworkUri) {
+        val uri = uiState.artworkUri
+        if (uri != null) {
+            val key = uri.toString()
+            context.imageLoader.enqueue(
+                ImageRequest.Builder(context).data(uri).memoryCacheKey(key).diskCacheKey(key).build(),
+            )
+        }
+        if (!holdArtworkForSlide) displayedArtworkUri = uri
     }
 
     // IMPORTANTE: el detector de gestos va ANTES del graphicsLayer que traslada la tarjeta. Si fuera
@@ -367,9 +395,10 @@ fun MiniPlayer(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             // Carátula real (placeholder teñido con el acento dinámico); es el elemento compartido.
+            // Usa la MOSTRADA (retenida durante el slide), no directamente uiState, para no colar la nueva.
             TrackThumbnail(
                 accent = MaterialTheme.colorScheme.primary,
-                artworkUri = uiState.artworkUri,
+                artworkUri = displayedArtworkUri,
                 modifier = artModifier,
                 size = 44.dp,
                 corner = 10.dp,

@@ -127,7 +127,13 @@ fun PlayerScreen(
     // Carátula real: se carga perezosamente con Coil desde el content URI (caché memoria+disco).
     // El acento dinámico NO se extrae aquí: lo hace un efecto compartido en MarluneApp al cambiar la
     // pista actual, para que el color se refresque en todas las vistas sin abrir Now Playing.
+    // La carátula NUEVA se PRECARGA al cambiar de pista, pero la MOSTRADA (`artwork`) no se actualiza
+    // mientras dure la animación de deslizamiento: se sustituye SOLO al terminar (ver el efecto de
+    // trackTransition), para no colar la imagen a media animación. Sin slide (carga directa/primera/play)
+    // se muestra al instante.
+    var loadedArtwork by remember { mutableStateOf<ImageBitmap?>(null) }
     var artwork by remember { mutableStateOf<ImageBitmap?>(null) }
+    var holdArtworkForSlide by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.artworkUri) {
         val uri = uiState.artworkUri
         val bitmap = if (uri == null) null else runCatching {
@@ -135,8 +141,10 @@ fun PlayerScreen(
                 ImageRequest.Builder(context).data(uri).allowHardware(false).build(),
             )
             (result as? SuccessResult)?.drawable?.toBitmap()
-        }.getOrNull()
-        artwork = bitmap?.asImageBitmap()
+        }.getOrNull()?.asImageBitmap()
+        loadedArtwork = bitmap
+        // Si al cargar ya no hay slide en curso (carga directa/tardía), muéstrala; si lo hay, espera al fin.
+        if (!holdArtworkForSlide) artwork = bitmap
     }
 
     // Desplazamiento horizontal del cambio de pista, compartido por la carátula y el título
@@ -153,10 +161,21 @@ fun PlayerScreen(
         val transition = uiState.trackTransition
         if (transition.id != lastHandledTransition) {
             lastHandledTransition = transition.id
-            when (transition.kind) {
-                TrackChange.NEXT -> runTrackSlideAnimation(true, trackOffset, artWidthPx, reducedMotion)
-                TrackChange.PREVIOUS -> runTrackSlideAnimation(false, trackOffset, artWidthPx, reducedMotion)
-                TrackChange.DIRECT -> {} // carga directa: sin slide; el contenido aparece/crossfade
+            val forward = when (transition.kind) {
+                TrackChange.NEXT -> true
+                TrackChange.PREVIOUS -> false
+                TrackChange.DIRECT -> null // carga directa: sin slide; el contenido aparece/crossfade
+            }
+            if (forward != null) {
+                // Mantiene la carátula ANTERIOR durante todo el slide; al terminar (el suspend de
+                // runTrackSlideAnimation retorna) sustituye por la nueva ya precargada → sin destello.
+                holdArtworkForSlide = true
+                try {
+                    runTrackSlideAnimation(forward, trackOffset, artWidthPx, reducedMotion)
+                } finally {
+                    artwork = loadedArtwork
+                    holdArtworkForSlide = false
+                }
             }
         }
     }

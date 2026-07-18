@@ -204,29 +204,37 @@ private fun ArtSurface(
     artwork: ImageBitmap?,
     modifier: Modifier = Modifier,
 ) {
+    val reducedMotion = LocalReducedMotion.current
     val clipped = modifier
         .clip(RoundedCornerShape(ArtCorner))
         .background(MarluneTheme.colors.surfaceElevated)
 
-    if (artwork != null) {
-        Image(
-            bitmap = artwork,
-            contentDescription = stringResource(R.string.player_artwork),
-            contentScale = ContentScale.Crop,
-            modifier = clipped,
-        )
-    } else {
-        // Marcador de posición hasta que la capa de datos entregue la carátula local.
-        Box(
-            modifier = clipped,
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.MusicNote,
-                contentDescription = null,
-                tint = MarluneTheme.colors.textTertiary,
-                modifier = Modifier.fillMaxSize(0.28f),
+    // Crossfade corto SOLO del contenido (imagen ↔ placeholder). No toca el gesto ni el slide: durante
+    // el deslizamiento la carátula mostrada se mantiene fija, así que esto solo suaviza la sustitución
+    // final (o la llegada tardía de la imagen sobre el placeholder). Nunca un destello a media animación.
+    Crossfade(
+        targetState = artwork,
+        animationSpec = if (reducedMotion) snap() else tween(120),
+        label = "artContentCrossfade",
+        modifier = clipped,
+    ) { art ->
+        if (art != null) {
+            Image(
+                bitmap = art,
+                contentDescription = stringResource(R.string.player_artwork),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
             )
+        } else {
+            // Marcador de posición hasta que la capa de datos entregue la carátula local.
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Rounded.MusicNote,
+                    contentDescription = null,
+                    tint = MarluneTheme.colors.textTertiary,
+                    modifier = Modifier.fillMaxSize(0.28f),
+                )
+            }
         }
     }
 }
