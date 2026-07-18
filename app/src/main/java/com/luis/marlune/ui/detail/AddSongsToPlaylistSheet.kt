@@ -186,9 +186,12 @@ private fun SongPickRow(song: Song, inList: Boolean, checked: Boolean, onToggle:
             )
         }
         Spacer(Modifier.width(12.dp))
+        // Callback SIEMPRE no-nulo (aunque esté deshabilitado): así todas conservan el área táctil de
+        // 48 dp de Material3 y quedan con la MISMA alineación/margen, estén marcadas por "ya en la lista"
+        // o no. La interacción real la corta `enabled`.
         Checkbox(
             checked = checked,
-            onCheckedChange = if (inList) null else { _ -> onToggle() },
+            onCheckedChange = { if (!inList) onToggle() },
             enabled = !inList,
             colors = CheckboxDefaults.colors(
                 checkedColor = MarluneTheme.colors.accent,
