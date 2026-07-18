@@ -88,11 +88,17 @@ internal fun <T> DragReorderState.startDrag(key: Any, items: SnapshotStateList<T
         while (isActive) {
             val speed = autoScrollSpeed
             if (speed != 0f) {
-                val consumed = listState.scrollBy(speed)
-                if (consumed != 0f) {
-                    offsetY += consumed // mantiene la fila bajo el dedo pese al desplazamiento
-                    evaluate?.invoke()
-                    clampBottomOffset()
+                // Salvaguarda: si la fila arrastrada ya no está en pantalla, no sigas desplazando la
+                // lista sola (evita que se vaya hasta la cima sin que el usuario suelte).
+                if (listState.layoutInfo.visibleItemsInfo.none { it.key == draggedKey }) {
+                    autoScrollSpeed = 0f
+                } else {
+                    val consumed = listState.scrollBy(speed)
+                    if (consumed != 0f) {
+                        offsetY += consumed // mantiene la fila bajo el dedo pese al desplazamiento
+                        evaluate?.invoke()
+                        if (speed > 0f) clampBottomOffset() else clampTopOffset()
+                    }
                 }
             }
             withFrameNanos { }
@@ -110,7 +116,10 @@ internal fun <T> DragReorderState.onDrag(
     offsetY += deltaY
     evaluate = { evaluateSwap(items, keyOf, sameGroup) }
     evaluate?.invoke()
-    clampBottomOffset()
+    // Limita la fila DENTRO del viewport: al bajar, sobre la bottom bar; al subir, sobre el borde superior
+    // (sin esto, arrastrar arriba más rápido de lo que intercambia sacaba la fila del viewport, la
+    // descomponía y el gesto moría solo). No cambia la bajada normal.
+    if (deltaY > 0f) clampBottomOffset() else if (deltaY < 0f) clampTopOffset()
     updateAutoScrollSpeed(items, keyOf)
 }
 
@@ -125,6 +134,22 @@ private fun DragReorderState.clampBottomOffset() {
     val fromInfo = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return
     val maxOffset = (info.viewportEndOffset - info.afterContentPadding - fromInfo.size - fromInfo.offset).toFloat()
     if (offsetY > maxOffset) offsetY = maxOffset
+}
+
+/**
+ * Impide que la fila arrastrada suba por ENCIMA del borde superior del contenido. Sin este tope, subir
+ * más rápido de lo que la lista intercambia sacaba la fila del viewport (se descomponía y el gesto moría
+ * solo, llevándose la fila a la cima). La fila se queda en el borde mientras la lista auto-scrollea.
+ */
+private fun DragReorderState.clampTopOffset() {
+    val key = draggedKey ?: return
+    val info = listState.layoutInfo
+    val fromInfo = info.visibleItemsInfo.firstOrNull { it.key == key } ?: return
+    // Por CENTRO (no por borde): mantiene el centro de la fila dentro del contenido, así SIEMPRE hay
+    // una fila bajo él con la que intercambiar. Evita que un arrastre rápido saque la fila del viewport
+    // (deriva → se descompone → el gesto muere). El borde llegaba a empujar la fila hacia abajo.
+    val minOffset = (info.viewportStartOffset + info.beforeContentPadding).toFloat() - (fromInfo.offset + fromInfo.size / 2f)
+    if (offsetY < minOffset) offsetY = minOffset
 }
 
 /** Intercambio: si el centro de la fila arrastrada cae dentro de otra del mismo grupo, las permuta. */
@@ -163,6 +188,8 @@ private fun <T> DragReorderState.updateAutoScrollSpeed(items: SnapshotStateList<
     val fromInfo = info.visibleItemsInfo.firstOrNull { it.key == key }
     if (fromInfo == null) { autoScrollSpeed = 0f; return }
     val index = items.indexOfFirst { keyOf(it) == key }
+    // Espejo exacto de la bajada: se auto-scrollea hacia arriba si no es ya la primera y la lista puede
+    // subir; hacia abajo si no es la última y puede bajar.
     val canUp = index > 0 && listState.canScrollBackward
     val canDown = index in 0 until (items.size - 1) && listState.canScrollForward
     val edge = with(density) { AutoScrollEdge.toPx() }
