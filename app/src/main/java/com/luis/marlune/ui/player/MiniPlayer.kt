@@ -1,5 +1,6 @@
 package com.luis.marlune.ui.player
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
@@ -93,6 +94,9 @@ private const val VerticalDominanceRatio = 1.5f
 
 private enum class MiniDragAxis { Undecided, ExpandUp, Horizontal, Down }
 
+/** Identidad visible de la pista en el mini-player (una sola unidad): título + artista + miniatura. */
+private data class MiniShownTrack(val title: String, val artist: String, val artworkUri: Uri?)
+
 /**
  * Mini-player como tarjeta flotante sobre la barra inferior. Tocarlo (fuera del botón) o
  * deslizarlo hacia arriba lo expande al reproductor completo; la carátula es el elemento
@@ -140,10 +144,11 @@ fun MiniPlayer(
     var cardWidthPx by remember { mutableStateOf(0f) }
     val context = LocalContext.current
 
-    // Miniatura MOSTRADA: durante el slide de cambio de pista se mantiene la ANTERIOR y se sustituye por
-    // la nueva SOLO al terminar la animación (ver el finally de abajo), para no colar la imagen a media
-    // animación. La nueva se precarga en caché de memoria mientras tanto (efecto de más abajo).
-    var displayedArtworkUri by remember { mutableStateOf(uiState.artworkUri) }
+    // Identidad MOSTRADA como UNA unidad (título + artista + miniatura): durante el slide se congela
+    // ENTERA y se sustituye por la nueva SOLO al terminar la animación (ver el finally de abajo), para
+    // que los tres no descuadren ni se cuelen a media animación. La carátula nueva se precarga en caché
+    // de memoria mientras tanto (efecto de más abajo). El resto (play/pausa) sigue en vivo de uiState.
+    var displayedTrack by remember { mutableStateOf(MiniShownTrack(uiState.title, uiState.artist, uiState.artworkUri)) }
     var holdArtworkForSlide by remember { mutableStateOf(false) }
 
     // Misma fuente única que Now Playing: la dirección sale del cambio de pista del player (reason
@@ -172,8 +177,9 @@ fun MiniPlayer(
                             runTrackSlideAnimation(forward, offsetX, cardWidthPx, reducedMotion)
                         } finally {
                             mirror.cancel()
-                            // Slide terminado (o cancelado por un nuevo gesto): muestra ya la carátula actual.
-                            displayedArtworkUri = latestUiState.value.artworkUri
+                            // Slide terminado (o cancelado): los tres cambian a la vez a la pista actual.
+                            val latest = latestUiState.value
+                            displayedTrack = MiniShownTrack(latest.title, latest.artist, latest.artworkUri)
                             holdArtworkForSlide = false
                         }
                     }
@@ -185,7 +191,7 @@ fun MiniPlayer(
     // Precarga la carátula nueva en la caché de memoria de Coil (misma clave estable que TrackThumbnail),
     // así al sustituirla al final del slide el cambio es instantáneo. Si no hay slide en curso (carga
     // directa/primera/metadatos), la muestra al instante.
-    LaunchedEffect(uiState.artworkUri) {
+    LaunchedEffect(uiState.title, uiState.artist, uiState.artworkUri) {
         val uri = uiState.artworkUri
         if (uri != null) {
             val key = uri.toString()
@@ -193,7 +199,8 @@ fun MiniPlayer(
                 ImageRequest.Builder(context).data(uri).memoryCacheKey(key).diskCacheKey(key).build(),
             )
         }
-        if (!holdArtworkForSlide) displayedArtworkUri = uri
+        // Sin slide en curso (carga directa/primera/metadatos) → muestra la pista completa al instante.
+        if (!holdArtworkForSlide) displayedTrack = MiniShownTrack(uiState.title, uiState.artist, uri)
     }
 
     // IMPORTANTE: el detector de gestos va ANTES del graphicsLayer que traslada la tarjeta. Si fuera
@@ -394,11 +401,11 @@ fun MiniPlayer(
                 .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            // Carátula real (placeholder teñido con el acento dinámico); es el elemento compartido.
-            // Usa la MOSTRADA (retenida durante el slide), no directamente uiState, para no colar la nueva.
+            // Pista MOSTRADA (retenida entera durante el slide), no uiState directo, para no descuadrar.
+            // La miniatura es el elemento compartido que viaja mini↔full.
             TrackThumbnail(
                 accent = MaterialTheme.colorScheme.primary,
-                artworkUri = displayedArtworkUri,
+                artworkUri = displayedTrack.artworkUri,
                 modifier = artModifier,
                 size = 44.dp,
                 corner = 10.dp,
@@ -406,7 +413,7 @@ fun MiniPlayer(
             Spacer(Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = uiState.title,
+                    text = displayedTrack.title,
                     style = MarluneTheme.typography.titleSmall,
                     color = MarluneTheme.colors.textPrimary,
                     maxLines = 1,
@@ -414,7 +421,7 @@ fun MiniPlayer(
                     modifier = titleModifier,
                 )
                 Text(
-                    text = uiState.artist,
+                    text = displayedTrack.artist,
                     style = MarluneTheme.typography.bodySmall,
                     color = MarluneTheme.colors.textSecondary,
                     maxLines = 1,

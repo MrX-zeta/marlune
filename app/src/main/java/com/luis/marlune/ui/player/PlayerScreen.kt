@@ -28,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -68,6 +69,9 @@ import com.luis.marlune.ui.player.components.runTrackSlideAnimation
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.launch
+
+/** Identidad visible de la pista que se PINTA (una sola unidad): título + artista + carátula juntos. */
+private data class ShownTrack(val title: String, val artist: String, val artwork: ImageBitmap?)
 
 /**
  * Pantalla del Reproductor (sin estado).
@@ -127,14 +131,18 @@ fun PlayerScreen(
     // Carátula real: se carga perezosamente con Coil desde el content URI (caché memoria+disco).
     // El acento dinámico NO se extrae aquí: lo hace un efecto compartido en MarluneApp al cambiar la
     // pista actual, para que el color se refresque en todas las vistas sin abrir Now Playing.
-    // La carátula NUEVA se PRECARGA al cambiar de pista, pero la MOSTRADA (`artwork`) no se actualiza
-    // mientras dure la animación de deslizamiento: se sustituye SOLO al terminar (ver el efecto de
-    // trackTransition), para no colar la imagen a media animación. Sin slide (carga directa/primera/play)
-    // se muestra al instante.
+    // Estado ACTUAL siempre disponible dentro de las corrutinas (finally del slide), aunque se capturara
+    // otro al lanzar el efecto.
+    val latestUiState = rememberUpdatedState(uiState)
+
+    // Identidad MOSTRADA como UNA unidad (título + artista + carátula juntos): durante el slide se congela
+    // ENTERA, así los tres no pueden descuadrar ni colarse antes de tiempo. La carátula nueva se PRECARGA
+    // y se muestra solo al terminar (ver el efecto de trackTransition). Lo demás (me gusta, marea, tiempos)
+    // sigue leyéndose en vivo de uiState: eso refleja la pista que YA suena.
     var loadedArtwork by remember { mutableStateOf<ImageBitmap?>(null) }
-    var artwork by remember { mutableStateOf<ImageBitmap?>(null) }
+    var displayedTrack by remember { mutableStateOf(ShownTrack(uiState.title, uiState.artist, null)) }
     var holdArtworkForSlide by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.artworkUri) {
+    LaunchedEffect(uiState.title, uiState.artist, uiState.artworkUri) {
         val uri = uiState.artworkUri
         val bitmap = if (uri == null) null else runCatching {
             val result = context.imageLoader.execute(
@@ -143,8 +151,9 @@ fun PlayerScreen(
             (result as? SuccessResult)?.drawable?.toBitmap()
         }.getOrNull()?.asImageBitmap()
         loadedArtwork = bitmap
-        // Si al cargar ya no hay slide en curso (carga directa/tardía), muéstrala; si lo hay, espera al fin.
-        if (!holdArtworkForSlide) artwork = bitmap
+        // Sin slide en curso (carga directa/tardía/metadatos) → muestra la pista completa ya, los tres a
+        // la vez con la imagen recién cargada. Si hay slide, se espera al finally.
+        if (!holdArtworkForSlide) displayedTrack = ShownTrack(uiState.title, uiState.artist, bitmap)
     }
 
     // Desplazamiento horizontal del cambio de pista, compartido por la carátula y el título
@@ -173,7 +182,9 @@ fun PlayerScreen(
                 try {
                     runTrackSlideAnimation(forward, trackOffset, artWidthPx, reducedMotion)
                 } finally {
-                    artwork = loadedArtwork
+                    // Slide terminado (o cancelado): los tres cambian a la vez a la pista ACTUAL, ya precargada.
+                    val latest = latestUiState.value
+                    displayedTrack = ShownTrack(latest.title, latest.artist, loadedArtwork)
                     holdArtworkForSlide = false
                 }
             }
@@ -252,7 +263,7 @@ fun PlayerScreen(
 
             // Carátula héroe (o letras al tocarla): elemento compartido, nítido, sin colapso.
             AlbumArt(
-                artwork = artwork,
+                artwork = displayedTrack.artwork,
                 trackOffset = trackOffset,
                 canGoPrevious = uiState.hasPrevious,
                 canGoNext = uiState.hasNext,
@@ -282,8 +293,8 @@ fun PlayerScreen(
             // Título y artista mórfean de posición/tamaño (sharedBounds); el "me gusta" es chrome.
             // Acompañan el swipe horizontal de pista con el mismo offset que la carátula.
             TrackInfo(
-                title = uiState.title,
-                artist = uiState.artist,
+                title = displayedTrack.title,
+                artist = displayedTrack.artist,
                 isLiked = uiState.isLiked,
                 onToggleLike = { onEvent(PlayerEvent.ToggleLike) },
                 titleModifier = titleModifier,
