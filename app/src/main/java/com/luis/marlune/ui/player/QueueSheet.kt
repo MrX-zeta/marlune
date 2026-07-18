@@ -40,8 +40,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.R
 import com.luis.marlune.playback.QueueItem
-import com.luis.marlune.ui.components.rememberDragReorderState
-import com.luis.marlune.ui.components.reorderableItem
+import com.luis.marlune.ui.components.MarluneReorderableItem
+import com.luis.marlune.ui.components.rememberMarluneReorderState
 import com.luis.marlune.ui.library.components.LibraryCover
 import com.luis.marlune.ui.library.components.NowPlayingBars
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -72,14 +72,15 @@ fun QueueSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
     val listState = rememberLazyListState()
-    val reorderState = rememberDragReorderState(listState)
     val current = queue.items.getOrNull(queue.currentIndex)
 
     // Orden LOCAL de lo que viene (índice REAL > actual), con clave estable; se re-sincroniza con la
     // cola salvo mientras se arrastra (optimista). El arrastre solo reordena esto; se persiste al soltar.
     val upcoming = remember { mutableStateListOf<QueueDragItem>() }
+    var dragging by remember { mutableStateOf(false) }
+    var dragStartPos by remember { mutableStateOf(-1) }
     LaunchedEffect(queue.items, queue.currentIndex) {
-        if (reorderState.draggedKey == null) {
+        if (!dragging) {
             upcoming.clear()
             for (i in (queue.currentIndex + 1) until queue.items.size) {
                 val it = queue.items[i]
@@ -92,12 +93,34 @@ fun QueueSheet(
     val contextUpcoming = upcoming.filterNot { it.manual }
     val contextShown = if (showAllContext) contextUpcoming else contextUpcoming.take(ContextPreviewCount)
 
-    // Al soltar: mueve la reproducción EN VIVO (índices reales = actual + 1 + posición). Solo dentro de
-    // la misma sección (manual↔manual, contexto↔contexto), así el rango real es contiguo. No toca Room.
-    val onSettle: (Any, Int, Int) -> Unit = { _, from, to ->
-        onMove(queue.currentIndex + 1 + from, queue.currentIndex + 1 + to)
+    // Reordena SOLO dentro de la misma sección (manual↔manual, contexto↔contexto). Como cada sección es
+    // un rango REAL contiguo (actual+1+posición), el movimiento se traslada tal cual al MediaController.
+    val reorderState = rememberMarluneReorderState(
+        listState = listState,
+        scrollThresholdPadding = PaddingValues(bottom = 16.dp),
+    ) { fromKey, toKey ->
+        val from = upcoming.indexOfFirst { it.key == fromKey }
+        val to = upcoming.indexOfFirst { it.key == toKey }
+        if (from != -1 && to != -1 && upcoming[from].manual == upcoming[to].manual) {
+            upcoming.add(to, upcoming.removeAt(from))
+        }
     }
-    val sameSection: (QueueDragItem, QueueDragItem) -> Boolean = { a, b -> a.manual == b.manual }
+
+    // Inicio/fin del arrastre: al soltar, traslada el movimiento neto (posición inicial → final dentro de
+    // `upcoming`) a índices REALES y lo aplica en vivo con moveMediaItem (una sola llamada).
+    val onRowStart: (Int) -> Unit = { key ->
+        dragging = true
+        dragStartPos = upcoming.indexOfFirst { it.key == key }
+    }
+    val onRowStop: (Int) -> Unit = { key ->
+        val endPos = upcoming.indexOfFirst { it.key == key }
+        val startPos = dragStartPos
+        dragging = false
+        dragStartPos = -1
+        if (startPos != -1 && endPos != -1 && startPos != endPos) {
+            onMove(queue.currentIndex + 1 + startPos, queue.currentIndex + 1 + endPos)
+        }
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -137,14 +160,20 @@ fun QueueSheet(
             if (manualUpcoming.isNotEmpty()) {
                 item(key = "hdr-manual") { QueueSectionHeader(stringResource(R.string.queue_section_added)) }
                 items(manualUpcoming, key = { it.key }, contentType = { "queueRow" }) { d ->
-                    QueueRow(
-                        item = d.item,
-                        isCurrent = false,
-                        isPlaying = queue.isPlaying,
-                        onClick = { onJumpTo(d.realIndex); onDismiss() },
-                        onRemove = { onRemove(d.realIndex) },
-                        modifier = reorderableItem(reorderState, d, upcoming, { it.key }, enabled = true, onSettle = onSettle, sameGroup = sameSection),
-                    )
+                    MarluneReorderableItem(
+                        state = reorderState,
+                        key = d.key,
+                        onStart = { onRowStart(d.key) },
+                        onStop = { onRowStop(d.key) },
+                    ) {
+                        QueueRow(
+                            item = d.item,
+                            isCurrent = false,
+                            isPlaying = queue.isPlaying,
+                            onClick = { onJumpTo(d.realIndex); onDismiss() },
+                            onRemove = { onRemove(d.realIndex) },
+                        )
+                    }
                 }
             }
 
@@ -154,14 +183,20 @@ fun QueueSheet(
                     QueueSectionHeader(stringResource(R.string.queue_section_from, source))
                 }
                 items(contextShown, key = { it.key }, contentType = { "queueRow" }) { d ->
-                    QueueRow(
-                        item = d.item,
-                        isCurrent = false,
-                        isPlaying = queue.isPlaying,
-                        onClick = { onJumpTo(d.realIndex); onDismiss() },
-                        onRemove = { onRemove(d.realIndex) },
-                        modifier = reorderableItem(reorderState, d, upcoming, { it.key }, enabled = true, onSettle = onSettle, sameGroup = sameSection),
-                    )
+                    MarluneReorderableItem(
+                        state = reorderState,
+                        key = d.key,
+                        onStart = { onRowStart(d.key) },
+                        onStop = { onRowStop(d.key) },
+                    ) {
+                        QueueRow(
+                            item = d.item,
+                            isCurrent = false,
+                            isPlaying = queue.isPlaying,
+                            onClick = { onJumpTo(d.realIndex); onDismiss() },
+                            onRemove = { onRemove(d.realIndex) },
+                        )
+                    }
                 }
                 if (!showAllContext && contextUpcoming.size > ContextPreviewCount) {
                     item(key = "see-all") { SeeAllRow(onClick = { showAllContext = true }) }

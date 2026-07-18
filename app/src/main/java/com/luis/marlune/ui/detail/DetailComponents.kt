@@ -39,9 +39,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.luis.marlune.ui.components.MarluneReorderableItem
 import com.luis.marlune.ui.components.StaggeredReveal
-import com.luis.marlune.ui.components.rememberDragReorderState
-import com.luis.marlune.ui.components.reorderableItem
+import com.luis.marlune.ui.components.rememberMarluneReorderState
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.Album
 import com.luis.marlune.domain.model.Artist
@@ -130,15 +130,26 @@ fun EntryList(
     var addTarget by remember { mutableStateOf<Long?>(null) }
     val reorderable = onReorder != null
     val listState = rememberLazyListState()
-    val reorderState = rememberDragReorderState(listState)
 
     // Orden local durante el arrastre (optimista); se re-sincroniza con `entries` cuando NO se arrastra.
     val items = remember { entries.toMutableStateList() }
+    var dragging by remember { mutableStateOf(false) }
     LaunchedEffect(entries) {
-        if (reorderState.draggedKey == null) {
+        if (!dragging) {
             items.clear()
             items.addAll(entries)
         }
+    }
+
+    // La cabecera (item "detail-header") NO se envuelve como reordenable: queda fija y su clave nunca casa
+    // en `items`, así que jamás es destino de intercambio. El auto-scroll respeta el inset inferior.
+    val reorderState = rememberMarluneReorderState(
+        listState = listState,
+        scrollThresholdPadding = PaddingValues(bottom = bottomPadding),
+    ) { fromKey, toKey ->
+        val from = items.indexOfFirst { it.id == fromKey }
+        val to = items.indexOfFirst { it.id == toKey }
+        if (from != -1 && to != -1) items.add(to, items.removeAt(from))
     }
 
     LazyColumn(
@@ -159,24 +170,7 @@ fun EntryList(
                     add(ContextMenuItem(R.string.menu_remove_from_playlist) { onRemoveFromPlaylist(entry.id) })
                 }
             }
-            val rowModifier = if (reorderable) {
-                // Al soltar persiste el ORDEN completo en Room (no toca la cola en curso).
-                reorderableItem(
-                    state = reorderState,
-                    item = entry,
-                    items = items,
-                    keyOf = { it.id },
-                    enabled = true,
-                    onSettle = { _, _, _ -> onReorder?.invoke(items.map { it.id }) },
-                )
-            } else {
-                Modifier
-            }
-            StaggeredReveal(
-                index = index,
-                enabled = !reorderable && index < StaggerVisibleCount,
-                modifier = rowModifier,
-            ) {
+            val row: @Composable () -> Unit = {
                 LibraryRow(
                     entry = entry,
                     coverIcon = coverIcon,
@@ -186,6 +180,17 @@ fun EntryList(
                     isCurrent = nowPlayingId != null && entry.id == nowPlayingId,
                     isPlaying = isPlaying,
                 )
+            }
+            if (reorderable) {
+                // Al soltar persiste el ORDEN completo en Room (no toca la cola en curso).
+                MarluneReorderableItem(
+                    state = reorderState,
+                    key = entry.id,
+                    onStart = { dragging = true },
+                    onStop = { dragging = false; onReorder?.invoke(items.map { it.id }) },
+                ) { row() }
+            } else {
+                StaggeredReveal(index = index, enabled = index < StaggerVisibleCount) { row() }
             }
         }
     }
