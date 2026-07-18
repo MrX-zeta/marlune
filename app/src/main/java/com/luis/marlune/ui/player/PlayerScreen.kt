@@ -140,6 +140,7 @@ fun PlayerScreen(
     // y se muestra solo al terminar (ver el efecto de trackTransition). Lo demás (me gusta, marea, tiempos)
     // sigue leyéndose en vivo de uiState: eso refleja la pista que YA suena.
     var loadedArtwork by remember { mutableStateOf<ImageBitmap?>(null) }
+    var loadedArtworkUri by remember { mutableStateOf(uiState.artworkUri) } // a qué pista pertenece loadedArtwork
     var displayedTrack by remember { mutableStateOf(ShownTrack(uiState.title, uiState.artist, null)) }
     var holdArtworkForSlide by remember { mutableStateOf(false) }
     LaunchedEffect(uiState.title, uiState.artist, uiState.artworkUri) {
@@ -151,8 +152,8 @@ fun PlayerScreen(
             (result as? SuccessResult)?.drawable?.toBitmap()
         }.getOrNull()?.asImageBitmap()
         loadedArtwork = bitmap
-        // Sin slide en curso (carga directa/tardía/metadatos) → muestra la pista completa ya, los tres a
-        // la vez con la imagen recién cargada. Si hay slide, se espera al finally.
+        loadedArtworkUri = uri
+        // Ya cargada: los tres a la vez (si no hay slide; si lo hay, se espera al finally).
         if (!holdArtworkForSlide) displayedTrack = ShownTrack(uiState.title, uiState.artist, bitmap)
     }
 
@@ -188,6 +189,18 @@ fun PlayerScreen(
                     holdArtworkForSlide = false
                 }
             }
+        }
+    }
+
+    // RESYNC al APARECER la rama o al cambiar de pista SIN slide: la vista que entra en la transición
+    // mini↔full nunca arranca con datos rancios (el bug: cambiar de canción y luego expandir/minimizar
+    // mostraba la anterior durante el crossfade). Va DESPUÉS del observador de trackTransition: en un
+    // SWIPE, holdArtworkForSlide ya está activo aquí, así que NO resincroniza (respeta la retención y no
+    // reintroduce el parpadeo). La carátula solo si la precargada es de ESTA pista → nunca descuadre.
+    LaunchedEffect(uiState.artworkUri, uiState.title) {
+        if (!holdArtworkForSlide) {
+            val art = if (loadedArtworkUri == uiState.artworkUri) loadedArtwork else null
+            displayedTrack = ShownTrack(uiState.title, uiState.artist, art)
         }
     }
 
