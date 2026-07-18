@@ -31,6 +31,9 @@
     <string name="playlist_new_option">Nueva lista</string>
     <string name="playlist_song_added">Añadida a %1$s</string>
     <string name="playlist_song_exists">Ya está en la lista</string>
+    <string name="playlist_add_songs">Añadir canciones</string>
+    <string name="playlist_add_songs_action">Añadir (%1$d)</string>
+    <string name="playlist_song_in_list">Ya en la lista</string>
     <string name="action_create">Crear</string>
     <string name="action_save">Guardar</string>
     <string name="action_cancel">Cancelar</string>
@@ -116,6 +119,10 @@
     <plurals name="settings_cache_count">
         <item quantity="one">%1$d letra guardada · %2$s</item>
         <item quantity="other">%1$d letras guardadas · %2$s</item>
+    </plurals>
+    <plurals name="playlist_songs_added">
+        <item quantity="one">%1$d canción añadida a la lista</item>
+        <item quantity="other">%1$d canciones añadidas a la lista</item>
     </plurals>
 
     <!-- Inicio -->
