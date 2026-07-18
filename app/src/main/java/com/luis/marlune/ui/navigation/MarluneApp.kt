@@ -169,6 +169,7 @@ fun MarluneApp(
     // sin ella la reproducción sigue igual (solo no se ve la notificación con controles).
     RequestNotificationPermissionOnFirstPlay(hasStartedPlayback = playerState.isPlaying)
     val lyricsState by playerViewModel.lyricsState.collectAsStateWithLifecycle()
+    val lyricsPicker by playerViewModel.lyricsPicker.collectAsStateWithLifecycle()
     val lyricsFolderError by playerViewModel.folderError.collectAsStateWithLifecycle()
     val internetLyricsEnabled by playerViewModel.internetLyricsEnabled.collectAsStateWithLifecycle()
 
@@ -294,6 +295,11 @@ fun MarluneApp(
                 PlayerScreen(
                     uiState = playerState,
                     lyricsState = lyricsState,
+                    lyricsPicker = lyricsPicker,
+                    onChangeLyrics = playerViewModel::openLyricsPicker,
+                    onChooseLyricsCandidate = playerViewModel::chooseLyricsCandidate,
+                    onUseAutomaticLyrics = playerViewModel::useAutomaticLyrics,
+                    onCloseLyricsPicker = playerViewModel::closeLyricsPicker,
                     folderError = lyricsFolderError,
                     internetLyricsEnabled = internetLyricsEnabled,
                     onEvent = dispatchPlayer,

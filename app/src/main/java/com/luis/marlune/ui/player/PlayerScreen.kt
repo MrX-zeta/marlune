@@ -61,6 +61,7 @@ import com.luis.marlune.playback.TrackChange
 import com.luis.marlune.ui.components.Marea
 import com.luis.marlune.ui.player.components.AlbumArt
 import com.luis.marlune.ui.player.components.LikeButton
+import com.luis.marlune.ui.player.components.LyricsPickerSheet
 import com.luis.marlune.ui.player.components.LyricsView
 import com.luis.marlune.ui.player.components.PlayerControls
 import com.luis.marlune.ui.player.components.runTrackSlideAnimation
@@ -81,6 +82,11 @@ import kotlinx.coroutines.launch
 fun PlayerScreen(
     uiState: PlayerUiState,
     lyricsState: LyricsUiState,
+    lyricsPicker: LyricsPickerState? = null,
+    onChangeLyrics: () -> Unit = {},
+    onChooseLyricsCandidate: (Long) -> Unit = {},
+    onUseAutomaticLyrics: () -> Unit = {},
+    onCloseLyricsPicker: () -> Unit = {},
     folderError: Boolean,
     internetLyricsEnabled: Boolean,
     onEvent: (PlayerEvent) -> Unit,
@@ -245,6 +251,7 @@ fun PlayerScreen(
                         internetEnabled = internetLyricsEnabled,
                         onGrantAccess = { initialUri -> folderLauncher.launch(initialUri) },
                         onSearchOnline = onOpenSettings,
+                        onChangeLyrics = onChangeLyrics,
                         modifier = Modifier.fillMaxSize(),
                     )
                 },
@@ -311,6 +318,16 @@ fun PlayerScreen(
                 onRemove = onRemoveQueueItem,
                 onMove = onMoveQueueItem,
                 onDismiss = onCloseQueue,
+            )
+        }
+
+        // Hoja "Cambiar letra": elegir manualmente entre las versiones reales de LRCLIB.
+        lyricsPicker?.let { picker ->
+            LyricsPickerSheet(
+                state = picker,
+                onChoose = onChooseLyricsCandidate,
+                onUseAutomatic = onUseAutomaticLyrics,
+                onDismiss = onCloseLyricsPicker,
             )
         }
     }

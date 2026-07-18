@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.luis.marlune.data.datastore.SettingsStore
+import com.luis.marlune.data.lyrics.CandidatesResult
 import com.luis.marlune.data.repository.AddFolderResult
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.LibraryState
@@ -126,9 +127,55 @@ class PlayerViewModel(
     private val _folderError = MutableStateFlow(false)
     val folderError: StateFlow<Boolean> = _folderError.asStateFlow()
 
+    // Hoja "Cambiar letra": null = cerrada. Se puebla al abrirla (lista de candidatos de LRCLIB).
+    private val _lyricsPicker = MutableStateFlow<LyricsPickerState?>(null)
+    val lyricsPicker: StateFlow<LyricsPickerState?> = _lyricsPicker.asStateFlow()
+
     init {
         viewModelScope.launch {
-            playback.state.map { it.mediaId }.distinctUntilChanged().collect { _folderError.value = false }
+            playback.state.map { it.mediaId }.distinctUntilChanged().collect {
+                _folderError.value = false
+                _lyricsPicker.value = null // cierra la hoja al cambiar de pista
+            }
+        }
+    }
+
+    /** Abre la hoja y carga los candidatos de la pista actual (marcando la elección manual activa). */
+    fun openLyricsPicker() {
+        val song = songFor(playback.state.value.mediaId) ?: return
+        _lyricsPicker.value = LyricsPickerState.Loading
+        viewModelScope.launch {
+            val activeId = lyrics.activeManualId(song)
+            _lyricsPicker.value = when (val r = lyrics.candidatesFor(song)) {
+                is CandidatesResult.Found -> LyricsPickerState.Ready(
+                    candidates = r.candidates.map {
+                        LyricsCandidateUi(it.id, it.artistName, it.albumName, it.durationSec, it.synced)
+                    },
+                    activeId = activeId,
+                )
+                CandidatesResult.NoConnection -> LyricsPickerState.Error(offline = true)
+                CandidatesResult.ServiceError -> LyricsPickerState.Error(offline = false)
+            }
+        }
+    }
+
+    fun closeLyricsPicker() { _lyricsPicker.value = null }
+
+    /** Fija la versión elegida (se aplica en vivo vía re-resolución) y cierra la hoja. */
+    fun chooseLyricsCandidate(id: Long) {
+        val song = songFor(playback.state.value.mediaId) ?: return
+        viewModelScope.launch {
+            if (lyrics.chooseManualLyrics(song, id)) _lyricsPicker.value = null
+            else _lyricsPicker.value = LyricsPickerState.Error(offline = false)
+        }
+    }
+
+    /** Descarta la elección manual y vuelve a la automática; cierra la hoja. */
+    fun useAutomaticLyrics() {
+        val song = songFor(playback.state.value.mediaId) ?: return
+        viewModelScope.launch {
+            lyrics.clearManualChoice(song)
+            _lyricsPicker.value = null
         }
     }
 

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.Lyrics
 import androidx.compose.material3.Icon
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -69,6 +70,7 @@ fun LyricsView(
     internetEnabled: Boolean,
     onGrantAccess: (initialUri: Uri?) -> Unit,
     onSearchOnline: () -> Unit,
+    onChangeLyrics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val surface = MarluneTheme.colors.surfaceElevated
@@ -88,6 +90,43 @@ fun LyricsView(
         }
         // Fades de borde (solo visuales; sin pointerInput → no bloquean el scroll).
         EdgeFadeOverlay(surface)
+        // "Cambiar letra": herramienta discreta para elegir otra versión de LRCLIB. Visible con letra
+        // mostrada y también en vacío/plano (donde más falta hace). Requiere el opt-in de internet. Es
+        // clicable → el detector de AlbumArt lo trata como toque consumido (no alterna carátula/letras).
+        val canChange = internetEnabled &&
+            (state is LyricsUiState.Synced || state is LyricsUiState.Plain || state is LyricsUiState.None)
+        if (canChange) {
+            ChangeLyricsButton(
+                onClick = onChangeLyrics,
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp),
+            )
+        }
+    }
+}
+
+/** Píldora discreta "Cambiar letra", anclada abajo del panel. */
+@Composable
+private fun ChangeLyricsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.72f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Lyrics,
+            contentDescription = null,
+            tint = MarluneTheme.colors.accent,
+            modifier = Modifier.size(16.dp),
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            text = stringResource(R.string.lyrics_change),
+            style = MarluneTheme.typography.labelLarge,
+            color = MarluneTheme.colors.accent,
+        )
     }
 }
 
