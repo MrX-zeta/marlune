@@ -32,7 +32,8 @@ import com.luis.marlune.ui.theme.MarluneTheme
 
 private const val ChipAnimMillis = 160
 private val ChipHeight = 36.dp
-private val ChipGap = 6.dp // hueco entre chips
+private val ChipGap = 4.dp // hueco entre chips (ajustado para que quepan mejor)
+private val ChipRowSidePadding = 16.dp // respiro en ambos extremos: el 1.º/último chip no se recorta
 
 /**
  * Chips de filtro con selección instantánea y robusta.
@@ -64,11 +65,15 @@ fun LibraryFilterChips(
         if (reducedMotion) listState.scrollToItem(selectedIndex) else listState.animateScrollToItem(selectedIndex)
     }
 
+    // Fila FIJA (userScrollEnabled = false): al no consumir el arrastre horizontal, el swipe entre
+    // pestañas (HorizontalPager) gana el gesto también cuando el dedo pasa sobre los chips. El
+    // contentPadding lateral + la separación ajustada evitan que "Listas"/"Canciones" se recorten.
     LazyRow(
         state = listState,
         modifier = modifier,
+        userScrollEnabled = false,
         horizontalArrangement = Arrangement.spacedBy(ChipGap),
-        contentPadding = PaddingValues(end = 8.dp),
+        contentPadding = PaddingValues(horizontal = ChipRowSidePadding),
     ) {
         items(filters, key = { it }, contentType = { "filterChip" }) { filter ->
             FilterChip(
