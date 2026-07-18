@@ -9,18 +9,24 @@ import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.domain.model.Song
 import com.luis.marlune.playback.PlaybackRepository
 import com.luis.marlune.ui.library.NowPlayingUi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
-/** Estado de una lista de canciones de detalle. `isLoading` = biblioteca aún cargando. */
+/**
+ * Estado de una lista de canciones de detalle. `isLoading` = biblioteca aún cargando.
+ * [totalDurationMs] = suma de las duraciones (precalculada con la lista, ignora las 0/desconocidas).
+ */
 data class SongListState(
     val songs: List<Song> = emptyList(),
     val isLoading: Boolean = true,
+    val totalDurationMs: Long = 0L,
 )
 
 /**
@@ -36,8 +42,14 @@ class SongListViewModel(
 
     val state: StateFlow<SongListState> =
         combine(music.library, songs) { libraryState, list ->
-            SongListState(songs = list, isLoading = libraryState is LibraryState.Loading)
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SongListState())
+            SongListState(
+                songs = list,
+                isLoading = libraryState is LibraryState.Loading,
+                // Suma UNA vez al derivar la lista (fuera del hilo principal, ver flowOn); las 0/desconocidas no suman.
+                totalDurationMs = list.sumOf { it.durationMs.coerceAtLeast(0L) },
+            )
+        }.flowOn(Dispatchers.Default)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SongListState())
 
     val nowPlaying: StateFlow<NowPlayingUi> =
         playback.state

@@ -138,6 +138,7 @@ fun AlbumDetailRoute(albumId: Long, contentPadding: PaddingValues, onBack: () ->
                     coverFallbackKey = albumId,
                     title = title,
                     songCount = state.songs.size,
+                    totalDurationMs = state.totalDurationMs,
                     onPlay = { vm.play(0) },
                     onShuffle = vm::playShuffled,
                 )
@@ -171,6 +172,7 @@ fun ArtistDetailRoute(artistId: Long, contentPadding: PaddingValues, onBack: () 
                     coverFallbackKey = artistId,
                     title = title,
                     songCount = state.songs.size,
+                    totalDurationMs = state.totalDurationMs,
                     onPlay = { vm.play(0) },
                     onShuffle = vm::playShuffled,
                 )
@@ -210,6 +212,7 @@ fun PlaylistDetailRoute(playlistId: Long, contentPadding: PaddingValues, onBack:
                     coverFallbackKey = playlistId,
                     title = name.orEmpty(),
                     songCount = state.songs.size,
+                    totalDurationMs = state.totalDurationMs,
                     onPlay = { vm.play(0) },
                     onShuffle = vm::playShuffled,
                     onAddSongs = { showAddSongs = true },

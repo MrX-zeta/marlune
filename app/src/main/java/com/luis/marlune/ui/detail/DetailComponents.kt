@@ -208,6 +208,8 @@ fun DetailHeader(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     modifier: Modifier = Modifier,
+    // Suma de duraciones precalculada (0 = no mostrar duración, p. ej. lista vacía).
+    totalDurationMs: Long = 0L,
     // Solo el detalle de una LISTA lo aporta: añade canciones a la lista en cualquier momento.
     onAddSongs: (() -> Unit)? = null,
 ) {
@@ -230,8 +232,10 @@ fun DetailHeader(
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
         )
         androidx.compose.foundation.layout.Spacer(Modifier.height(4.dp))
+        val countText = "$songCount ${if (songCount == 1) "canción" else "canciones"}"
+        val durationText = formatTotalDuration(totalDurationMs)
         Text(
-            text = "$songCount ${if (songCount == 1) "canción" else "canciones"}",
+            text = if (durationText != null) "$countText · $durationText" else countText,
             style = MarluneTheme.typography.bodyMedium,
             color = MarluneTheme.colors.textSecondary,
         )
@@ -273,6 +277,15 @@ fun DetailHeader(
             }
         }
     }
+}
+
+/** Duración total legible: "X h Y min" (≥1 h) o "Y min" (<1 h), redondeada a minutos. `null` si <1 min. */
+private fun formatTotalDuration(totalMs: Long): String? {
+    val minutes = ((totalMs + 30_000L) / 60_000L).toInt() // redondeo a minutos, sin segundos
+    if (minutes < 1) return null
+    val hours = minutes / 60
+    val mins = minutes % 60
+    return if (hours >= 1) "$hours h $mins min" else "$mins min"
 }
 
 fun Song.toLibraryEntry(): LibraryEntry =
