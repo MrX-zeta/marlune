@@ -9,7 +9,6 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -22,7 +21,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.luis.marlune.ui.library.LibraryFilter
 import com.luis.marlune.ui.theme.LocalReducedMotion
@@ -30,18 +28,20 @@ import com.luis.marlune.ui.theme.MarluneTheme
 
 private const val ChipAnimMillis = 160
 private val ChipHeight = 36.dp
-private val ChipGap = 6.dp // hueco entre chips (compacto para que quepan los 4)
-private val ChipRowSidePadding = 12.dp // respiro a los lados: "Listas"/"Canciones" no quedan pegados al borde
-private val ChipInnerPadding = 6.dp // padding interno mínimo del texto dentro de su pastilla
+private val ChipRowStartPadding = 12.dp // margen izquierdo de la fila
+private val ChipRowEndPadding = 18.dp // margen derecho algo mayor: corre los chips a la izquierda, así el
+                                      // último ("Canciones") no queda pegado al borde
+private val ChipInnerPadding = 10.dp // padding interno (holgado pero compacto para que quepan los 4)
 
 /**
- * Chips de filtro en una fila FIJA (sin scroll horizontal): los 4 se reparten el ancho con `weight`
- * igual, así siempre caben completos —también en pantallas estrechas— sin recortar texto ni desbordar.
- * Al no ser deslizable, no atrapa el gesto: el swipe entre pantallas funciona también sobre los chips.
+ * Chips de filtro en una fila FIJA (sin scroll horizontal). Cada chip se ajusta al ANCHO DE SU TEXTO
+ * (+padding), sin truncar —"Canciones", el más largo, se ve entero incluso activo, con su fondo
+ * abarcándolo—. El espacio sobrante se reparte como separación uniforme ENTRE chips ([Arrangement.SpaceBetween])
+ * más un pequeño margen a los lados. Al no ser deslizable, el swipe entre pantallas funciona sobre los chips.
  *
- * Selección instantánea y robusta: cada chip pinta SU PROPIO fondo ("pill") cuando está seleccionado
- * (acento tenue, animando color/alfa por chip con `animateColorAsState`, retargetable) y el texto pasa
- * de secundario a acento. Sin medición, sin auto-scroll y sin ripple. Respeta el movimiento reducido.
+ * Selección instantánea: cada chip pinta su propio fondo ("pill", acento tenue) cuando está seleccionado
+ * y el texto pasa de secundario a acento, animando por chip ([animateColorAsState], retargetable). Sin
+ * medición, sin auto-scroll y sin ripple. Respeta el movimiento reducido.
  */
 @Composable
 fun LibraryFilterChips(
@@ -51,8 +51,11 @@ fun LibraryFilterChips(
 ) {
     val reducedMotion = LocalReducedMotion.current
     Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = ChipRowSidePadding),
-        horizontalArrangement = Arrangement.spacedBy(ChipGap),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(start = ChipRowStartPadding, end = ChipRowEndPadding),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
         LibraryFilter.entries.forEach { filter ->
             FilterChip(
@@ -60,20 +63,18 @@ fun LibraryFilterChips(
                 selected = filter == selected,
                 reducedMotion = reducedMotion,
                 onClick = { onSelect(filter) },
-                modifier = Modifier.weight(1f),
             )
         }
     }
 }
 
-/** Un chip (celda de ancho igual): su fondo (pill) y el color del texto animan según [selected]. */
+/** Un chip a ancho de contenido: su fondo (pill) y el color del texto animan según [selected]. */
 @Composable
-private fun RowScope.FilterChip(
+private fun FilterChip(
     label: String,
     selected: Boolean,
     reducedMotion: Boolean,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier,
 ) {
     val pill = MarluneTheme.colors.accentMuted
     val bgColor by animateColorAsState(
@@ -88,7 +89,7 @@ private fun RowScope.FilterChip(
     )
 
     Box(
-        modifier = modifier
+        modifier = Modifier
             .height(ChipHeight)
             .clip(RoundedCornerShape(50))
             .background(bgColor)
@@ -104,9 +105,7 @@ private fun RowScope.FilterChip(
             style = MarluneTheme.typography.labelLarge,
             color = textColor,
             maxLines = 1,
-            softWrap = false,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(),
+            softWrap = false, // el objetivo es que quepan holgados; si algo no cupiera, se detecta en pruebas
         )
     }
 }
