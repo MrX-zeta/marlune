@@ -6,6 +6,7 @@ import android.net.Uri
 import android.provider.DocumentsContract
 import android.util.Log
 import com.luis.marlune.data.datastore.LyricsFolderStore
+import com.luis.marlune.data.lyrics.CandidatesResult
 import com.luis.marlune.data.lyrics.LrcLibClient
 import com.luis.marlune.data.lyrics.LrcLibLyrics
 import com.luis.marlune.data.lyrics.LrcLibResult
@@ -108,6 +109,15 @@ class LyricsRepository(
         val local = lyricsFor(song)
         if (local != null && local.synced) return@withContext LyricsResolution.Found(local)
 
+        // ELECCIÓN MANUAL del usuario: gana sobre la caché de red y la automática (solo la cede la
+        // local sincronizada, que está cuadrada contra el archivo exacto). Es un dato local ya
+        // descargado: se muestra con o sin conexión.
+        val manual = networkCache.getManual(song.id)
+        if (manual != null) {
+            Log.d(LYRICS_TAG, "resolve id=${song.id} -> ELECCIÓN MANUAL (synced=${manual.synced})")
+            return@withContext LyricsResolution.Found(manual)
+        }
+
         val cached = networkCache.get(song.id)
         if (cached != null && cached.synced) return@withContext LyricsResolution.Found(cached)
 
@@ -140,10 +150,41 @@ class LyricsRepository(
         }
     }
 
+    /** Candidatos de LRCLIB para la elección MANUAL (lista sin validar; ver [LrcLibClient.searchCandidates]). */
+    suspend fun candidatesFor(song: Song): CandidatesResult = withContext(Dispatchers.IO) {
+        lrcLibClient.searchCandidates(song.title, song.artist, song.durationMs / 1000)
+    }
+
+    /** Id de LRCLIB de la elección manual activa de la canción (para marcarla en la lista), o `null`. */
+    suspend fun activeManualId(song: Song): Long? = withContext(Dispatchers.IO) { networkCache.getManualId(song.id) }
+
+    /**
+     * Fija la letra elegida a mano: la trae por id (`/api/get/{id}`), la persiste como elección de la
+     * canción y re-dispara la resolución. Devuelve `true` si se pudo traer y guardar.
+     */
+    suspend fun chooseManualLyrics(song: Song, candidateId: Long): Boolean = withContext(Dispatchers.IO) {
+        when (val r = lrcLibClient.fetchById(candidateId)) {
+            is LrcLibResult.Found -> {
+                networkCache.putManual(song.id, candidateId, r.lyrics.syncedLyrics, r.lyrics.plainLyrics)
+                _cacheInvalidations.value += 1
+                _cacheChanges.value += 1
+                true
+            }
+            else -> false
+        }
+    }
+
+    /** Descarta la elección manual y vuelve a la resolución automática. */
+    suspend fun clearManualChoice(song: Song) = withContext(Dispatchers.IO) {
+        networkCache.clearManual(song.id)
+        _cacheInvalidations.value += 1
+        _cacheChanges.value += 1
+    }
+
     /**
      * Borra TODAS las letras descargadas: disco privado + caché en memoria del repo, y RE-DISPARA la
-     * resolución (vía [cacheInvalidations]) para que la UI deje de mostrar la letra ya borrada. NO
-     * toca las letras locales (.lrc/etiquetas): esas se releen de sus fuentes.
+     * resolución (vía [cacheInvalidations]) para que la UI deje de mostrar la letra ya borrada. Incluye
+     * las ELECCIONES MANUALES (viven en la misma carpeta). NO toca las letras locales (.lrc/etiquetas).
      */
     suspend fun clearNetworkCache() = withContext(Dispatchers.IO) {
         Log.d(LYRICS_TAG, "borrar letras descargadas (disco + memoria) + re-resolver")

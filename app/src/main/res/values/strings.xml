@@ -66,6 +66,14 @@
     <string name="lyrics_no_connection">Sin conexión. No se pudo buscar la letra.</string>
     <string name="lyrics_service_error">No se pudo obtener la letra ahora mismo.</string>
     <string name="lyrics_search_online">Buscar letras en internet</string>
+    <string name="lyrics_change">Cambiar letra</string>
+    <string name="lyrics_picker_title">Elegir versión de la letra</string>
+    <string name="lyrics_picker_empty">No hay otras versiones</string>
+    <string name="lyrics_picker_active">Versión activa</string>
+    <string name="lyrics_picker_unknown_artist">Artista desconocido</string>
+    <string name="lyrics_tag_synced">Sincronizada</string>
+    <string name="lyrics_tag_plain">Solo texto</string>
+    <string name="lyrics_use_automatic">Usar la automática</string>
     <string name="settings_title">Ajustes</string>
     <string name="settings_subtitle">Personaliza tu experiencia</string>
     <string name="settings_close">Cerrar</string>
@@ -100,7 +108,7 @@
     <string name="settings_cache_empty">No hay letras guardadas</string>
     <string name="settings_clear_downloaded">Borrar letras descargadas</string>
     <string name="settings_clear_confirm_title">¿Borrar letras descargadas?</string>
-    <string name="settings_clear_confirm_msg">Se borrarán las letras descargadas de internet. Las letras de tus archivos (.lrc y etiquetas) NO se tocan. Podrás volver a descargarlas si la búsqueda en internet está activada.</string>
+    <string name="settings_clear_confirm_msg">Se borrarán las letras descargadas de internet y las versiones que hayas elegido a mano. Las letras de tus archivos (.lrc y etiquetas) NO se tocan. Podrás volver a descargarlas si la búsqueda en internet está activada.</string>
     <string name="settings_clear_confirm_yes">Borrar</string>
     <string name="settings_clear_confirm_no">Cancelar</string>
     <string name="settings_clear_done">Letras descargadas borradas</string>
