@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
@@ -207,6 +208,8 @@ fun DetailHeader(
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
     modifier: Modifier = Modifier,
+    // Solo el detalle de una LISTA lo aporta: añade canciones a la lista en cualquier momento.
+    onAddSongs: (() -> Unit)? = null,
 ) {
     Column(
         modifier = modifier.fillMaxWidth().padding(top = 4.dp, bottom = 16.dp),
@@ -255,6 +258,18 @@ fun DetailHeader(
                 Icon(Icons.Rounded.Shuffle, null, Modifier.size(20.dp))
                 androidx.compose.foundation.layout.Spacer(Modifier.width(6.dp))
                 Text(stringResource(R.string.player_shuffle))
+            }
+            // "+" para añadir canciones (solo listas): misma fila, botón circular en superficie elevada.
+            if (onAddSongs != null) {
+                androidx.compose.material3.FilledIconButton(
+                    onClick = onAddSongs,
+                    colors = androidx.compose.material3.IconButtonDefaults.filledIconButtonColors(
+                        containerColor = MarluneTheme.colors.surfaceElevated,
+                        contentColor = MarluneTheme.colors.accent,
+                    ),
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.playlist_add_songs))
+                }
             }
         }
     }

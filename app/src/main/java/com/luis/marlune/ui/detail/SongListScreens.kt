@@ -8,8 +8,10 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -190,6 +192,7 @@ fun PlaylistDetailRoute(playlistId: Long, contentPadding: PaddingValues, onBack:
     val state by vm.state.collectAsStateWithLifecycle()
     val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    var showAddSongs by remember { mutableStateOf(false) }
 
     DetailScaffold("", onBack, contentPadding) { bottomPadding ->
         SongListBody(
@@ -209,10 +212,17 @@ fun PlaylistDetailRoute(playlistId: Long, contentPadding: PaddingValues, onBack:
                     songCount = state.songs.size,
                     onPlay = { vm.play(0) },
                     onShuffle = vm::playShuffled,
+                    onAddSongs = { showAddSongs = true },
                 )
             },
             onReorder = { orderedIds -> scope.launch { playlists.reorderSongs(playlistId, orderedIds) } },
+            // Lista vacía: la cabecera (con "+") no se muestra, así que ofrecemos la acción aquí.
+            emptyAction = { AddSongsButton(onClick = { showAddSongs = true }) },
         )
+    }
+
+    if (showAddSongs) {
+        AddSongsToPlaylistSheet(playlistId = playlistId, onDismiss = { showAddSongs = false })
     }
 }
 
@@ -229,10 +239,11 @@ private fun SongListBody(
     onRemoveFromPlaylist: ((Long) -> Unit)? = null,
     header: (@Composable () -> Unit)? = null,
     onReorder: ((List<Long>) -> Unit)? = null,
+    emptyAction: (@Composable () -> Unit)? = null,
 ) {
     when {
         state.isLoading -> LoadingRows()
-        state.songs.isEmpty() -> EmptyState(icon = emptyIcon, title = emptyTitle, hint = emptyHint)
+        state.songs.isEmpty() -> EmptyState(icon = emptyIcon, title = emptyTitle, hint = emptyHint, action = emptyAction)
         else -> EntryList(
             entries = state.songs.map { it.toLibraryEntry() },
             coverIcon = Icons.Rounded.MusicNote,
