@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -26,6 +27,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -79,12 +81,22 @@ fun AddSongsToPlaylistSheet(playlistId: Long, onDismiss: () -> Unit) {
 
     val selected = remember { mutableStateListOf<Long>() }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = MarluneTheme.colors.surfaceElevated) {
+    // Siempre TOTALMENTE expandida: sin el estado a medias, el arrastre del sheet ya no pelea con el
+    // scroll de la lista (que antes se agitaba y no dejaba subir/bajar).
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MarluneTheme.colors.surfaceElevated,
+    ) {
+        // El margen lateral va POR ELEMENTO (no en el Column): así la lista ocupa TODO el ancho y el
+        // arrastre vertical funciona también pegado a los bordes izquierdo/derecho.
+        val sidePadding = Modifier.padding(horizontal = 20.dp)
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight(0.92f)
-                .padding(horizontal = 20.dp)
                 .navigationBarsPadding()
                 .imePadding(),
         ) {
@@ -92,6 +104,7 @@ fun AddSongsToPlaylistSheet(playlistId: Long, onDismiss: () -> Unit) {
                 text = stringResource(R.string.playlist_add_songs),
                 style = MarluneTheme.typography.titleMedium,
                 color = MarluneTheme.colors.textPrimary,
+                modifier = sidePadding,
             )
             Spacer(Modifier.padding(top = 12.dp))
             SearchField(
@@ -99,6 +112,7 @@ fun AddSongsToPlaylistSheet(playlistId: Long, onDismiss: () -> Unit) {
                 onQueryChange = { query = it },
                 onSubmit = {},
                 onClear = { query = "" },
+                modifier = sidePadding,
             )
             Spacer(Modifier.padding(top = 12.dp))
 
@@ -110,7 +124,11 @@ fun AddSongsToPlaylistSheet(playlistId: Long, onDismiss: () -> Unit) {
                         hint = stringResource(R.string.library_empty_hint),
                     )
                     shown.isEmpty() -> Note(stringResource(R.string.search_no_results))
-                    else -> LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                    // Ancho completo + margen como contentPadding: zona de scroll de borde a borde.
+                    else -> LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 20.dp),
+                    ) {
                         items(shown, key = { it.id }, contentType = { "songPickRow" }) { song ->
                             val inList = song.id in existingIds
                             SongPickRow(
@@ -142,7 +160,7 @@ fun AddSongsToPlaylistSheet(playlistId: Long, onDismiss: () -> Unit) {
                     }
                 },
                 enabled = selected.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().then(sidePadding),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MarluneTheme.colors.accent,
                     contentColor = MaterialTheme.colorScheme.onPrimary,
