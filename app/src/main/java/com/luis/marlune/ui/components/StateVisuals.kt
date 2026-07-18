@@ -84,13 +84,17 @@ fun LoadingRows(
     }
 }
 
-/** Estado vacío neutro: icono tenue + título + pista de qué hacer. */
+/**
+ * Estado vacío neutro: icono tenue + título + pista de qué hacer. [action] opcional (por defecto
+ * ninguna) para ofrecer una salida desde el propio vacío (p. ej. "Añadir canciones" en una lista nueva).
+ */
 @Composable
 fun EmptyState(
     icon: ImageVector,
     title: String,
     hint: String,
     modifier: Modifier = Modifier,
+    action: (@Composable () -> Unit)? = null,
 ) {
     Column(
         modifier = modifier
@@ -118,5 +122,9 @@ fun EmptyState(
             color = MarluneTheme.colors.textTertiary,
             textAlign = TextAlign.Center,
         )
+        if (action != null) {
+            Spacer(Modifier.height(20.dp))
+            action()
+        }
     }
 }
