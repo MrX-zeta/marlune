@@ -23,6 +23,23 @@ sealed interface LrcLibResult {
     data object ServiceError : LrcLibResult
 }
 
+/** Candidato de `/search` para la elección MANUAL: metadatos + si trae letra sincronizada o solo plana. */
+data class LrcLibCandidate(
+    val id: Long,
+    val trackName: String,
+    val artistName: String,
+    val albumName: String,
+    val durationSec: Long,
+    val synced: Boolean,
+)
+
+/** Resultado de listar candidatos: la lista (posiblemente vacía) o el fallo de red correspondiente. */
+sealed interface CandidatesResult {
+    data class Found(val candidates: List<LrcLibCandidate>) : CandidatesResult
+    data object NoConnection : CandidatesResult
+    data object ServiceError : CandidatesResult
+}
+
 /**
  * Cliente de [LRCLIB](https://lrclib.net/api): gratuito, comunitario, sin API key, con letras
  * sincronizadas. Usa `HttpURLConnection` (sin dependencias nuevas) con timeout corto y un `User-Agent`
@@ -119,28 +136,36 @@ class LrcLibClient {
         LrcLibResult.ServiceError -> "ServiceError"
     }
 
+    /** Cuerpo crudo de una respuesta 2xx, o el estado de fallo (misma semántica que [LrcLibResult]). */
+    private sealed interface Raw {
+        data class Body(val text: String) : Raw
+        data object NotFound : Raw
+        data object NoConnection : Raw
+        data object ServiceError : Raw
+    }
+
     /**
-     * Ejecuta la petición con UN reintento ante fallo TRANSITORIO: conexión en frío
-     * ([LrcLibResult.NoConnection], DNS/handshake) y error del servicio ([LrcLibResult.ServiceError],
-     * típicamente un 503 de rate-limit). Éxito y 404 no se reintentan. Para el 503 el backoff es mayor
-     * (~1 s): es límite de tasa, no un fallo de red; reintentar de inmediato lo vuelve a pegar.
+     * Petición GET con UN reintento ante fallo TRANSITORIO: conexión en frío ([Raw.NoConnection],
+     * DNS/handshake) y error del servicio ([Raw.ServiceError], típicamente un 503 de rate-limit). Éxito
+     * y 404 no se reintentan. Para el 503 el backoff es mayor (~1 s): es límite de tasa, no un fallo de
+     * red; reintentar de inmediato lo vuelve a pegar. Núcleo ÚNICO reutilizado por fetch/candidatos/id.
      */
-    private fun request(url: String, parse: (String) -> LrcLibResult): LrcLibResult {
-        var result: LrcLibResult = LrcLibResult.NoConnection
+    private fun requestRaw(url: String): Raw {
+        var result: Raw = Raw.NoConnection
         repeat(MAX_ATTEMPTS) { attempt ->
-            result = requestOnce(url, parse)
-            val transient = result is LrcLibResult.NoConnection || result is LrcLibResult.ServiceError
+            result = requestRawOnce(url)
+            val transient = result is Raw.NoConnection || result is Raw.ServiceError
             if (!transient) return result
             if (attempt < MAX_ATTEMPTS - 1) {
-                val backoff = if (result is LrcLibResult.ServiceError) SERVICE_RETRY_DELAY_MS else RETRY_DELAY_MS
-                Log.d(TAG, "  reintento tras fallo transitorio (${describe(result)}) en ${backoff}ms")
+                val backoff = if (result is Raw.ServiceError) SERVICE_RETRY_DELAY_MS else RETRY_DELAY_MS
+                Log.d(TAG, "  reintento tras fallo transitorio (${result.javaClass.simpleName}) en ${backoff}ms")
                 runCatching { Thread.sleep(backoff) }
             }
         }
         return result
     }
 
-    private fun requestOnce(url: String, parse: (String) -> LrcLibResult): LrcLibResult {
+    private fun requestRawOnce(url: String): Raw {
         var conn: HttpURLConnection? = null
         val start = System.currentTimeMillis()
         return try {
@@ -154,13 +179,12 @@ class LrcLibClient {
             val code = conn.responseCode
             Log.d(TAG, "  HTTP $code (${System.currentTimeMillis() - start}ms) $url")
             when {
-                code in 200..299 -> parse(conn.inputStream.bufferedReader().use { it.readText() })
+                code in 200..299 -> Raw.Body(conn.inputStream.bufferedReader().use { it.readText() })
                 else -> {
                     // Drena el cuerpo de error para devolver la conexión al POOL (keep-alive): la
-                    // siguiente petición (p. ej. /search tras un /get 404) REUTILIZA el TLS ya negociado
-                    // en vez de reconectar (~1-2 s menos), y también acelera las letras siguientes.
+                    // siguiente petición REUTILIZA el TLS ya negociado en vez de reconectar (~1-2 s menos).
                     runCatching { conn.errorStream?.use { it.readBytes() } }
-                    if (code >= 500) LrcLibResult.ServiceError else LrcLibResult.NotFound
+                    if (code >= 500) Raw.ServiceError else Raw.NotFound
                 }
             }
         } catch (e: java.util.concurrent.CancellationException) {
@@ -174,10 +198,71 @@ class LrcLibClient {
             // [DIAG] stack trace completo + a qué estado se mapea, para distinguir sin-red de otro fallo.
             Log.w(TAG, "  EXCEPCIÓN ${e.javaClass.name}: ${e.message} -> ${if (noConn) "NoConnection" else "ServiceError"}", e)
             conn?.disconnect() // ante fallo SÍ cerramos (la conexión pudo quedar en mal estado)
-            if (noConn) LrcLibResult.NoConnection else LrcLibResult.ServiceError
+            if (noConn) Raw.NoConnection else Raw.ServiceError
         }
         // Camino normal (2xx/404/5xx): NO se llama a disconnect() → la conexión vuelve al pool y se
         // reutiliza (keep-alive), evitando un handshake TLS por petición.
+    }
+
+    /** Adaptador: ejecuta [requestRaw] y aplica [parse] al cuerpo 2xx; mapea los fallos a [LrcLibResult]. */
+    private fun request(url: String, parse: (String) -> LrcLibResult): LrcLibResult =
+        when (val raw = requestRaw(url)) {
+            is Raw.Body -> parse(raw.text)
+            Raw.NotFound -> LrcLibResult.NotFound
+            Raw.NoConnection -> LrcLibResult.NoConnection
+            Raw.ServiceError -> LrcLibResult.ServiceError
+        }
+
+    /**
+     * LISTA de candidatos de `/search` (para elección MANUAL): SIN validación estricta —el usuario debe
+     * ver TODO lo que hay, incluso lo que el filtro automático descartaría—. Ordena: sincronizadas
+     * primero, y dentro de cada grupo por duración más cercana a la del archivo. Reutiliza el núcleo de
+     * red ([requestRaw]).
+     */
+    fun searchCandidates(title: String, artist: String, durationSec: Long): CandidatesResult {
+        if (title.isBlank() || artist.isBlank()) return CandidatesResult.Found(emptyList())
+        val url = "$BASE/search?" + query("track_name" to title, "artist_name" to artist)
+        return when (val raw = requestRaw(url)) {
+            is Raw.Body -> CandidatesResult.Found(parseCandidates(raw.text, durationSec))
+            Raw.NotFound -> CandidatesResult.Found(emptyList())
+            Raw.NoConnection -> CandidatesResult.NoConnection
+            Raw.ServiceError -> CandidatesResult.ServiceError
+        }
+    }
+
+    /**
+     * Trae UN registro por su id de LRCLIB (`/api/get/{id}`), para la letra elegida a mano. SIN
+     * validación de identidad/duración: el usuario la eligió a propósito.
+     */
+    fun fetchById(id: Long): LrcLibResult =
+        request("$BASE/get/$id") { body ->
+            val obj = runCatching { JSONObject(body) }.getOrNull() ?: return@request LrcLibResult.NotFound
+            obj.toLyrics()?.let { LrcLibResult.Found(it) } ?: LrcLibResult.NotFound
+        }
+
+    private fun parseCandidates(body: String, durationSec: Long): List<LrcLibCandidate> {
+        val arr = runCatching { JSONArray(body) }.getOrNull() ?: return emptyList()
+        val out = ArrayList<LrcLibCandidate>()
+        for (i in 0 until arr.length()) {
+            val item = arr.optJSONObject(i) ?: continue
+            if (item.optBoolean("instrumental", false)) continue
+            val synced = item.optString("syncedLyrics").let { it.isNotBlank() && it != "null" }
+            val plain = item.optString("plainLyrics").let { it.isNotBlank() && it != "null" }
+            if (!synced && !plain) continue // sin nada que mostrar
+            out += LrcLibCandidate(
+                id = item.optLong("id", -1),
+                trackName = item.optString("trackName"),
+                artistName = item.optString("artistName"),
+                albumName = item.optString("albumName"),
+                durationSec = item.optLong("duration", -1),
+                synced = synced,
+            )
+        }
+        // Sincronizadas primero; dentro de cada grupo, la duración más cercana a la del archivo.
+        return out.sortedWith(
+            compareByDescending<LrcLibCandidate> { it.synced }
+                .thenBy { if (it.durationSec > 0 && durationSec > 0) abs(it.durationSec - durationSec) else Long.MAX_VALUE },
+        )
     }
 
     /**
