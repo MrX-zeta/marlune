@@ -134,6 +134,15 @@ class PlaybackRepository(context: Context) {
     private var sleepJob: Job? = null
     private var pauseAtTrackEnd = false
 
+    // Snapshot de la cola CACHEADO: recorrer la cola entera (queueItems/queueIds asignan un
+    // Timeline.Window por ítem) cuesta decenas de ms en el hilo principal con colas grandes
+    // (p. ej. "Canciones" = toda la biblioteca). Un skip SONANDO dispara varios onEvents seguidos
+    // (transición + buffering + isPlaying), y reconstruir el snapshot en cada uno encadenaba esos
+    // stalls justo al arrancar el slide del mini (el "delay" al deslizar sonando; en pausa hay
+    // menos eventos y por eso era fluido). Se reconstruye SOLO con queueDirty (la cola cambió).
+    private var queueDirty = true // el primer refresh tras conectar siempre construye
+    private var cachedQueueIds: List<Long> = emptyList()
+
     // Naturaleza del último cambio de pista, derivada del `reason` de Media3 (fuente única).
     private var transitionId = 0
     private var transitionKind = TrackChange.DIRECT
@@ -172,7 +181,16 @@ class PlaybackRepository(context: Context) {
             // El estado se re-emite en onEvents (que agrupa esta transición); ahí se incluye.
         }
 
-        override fun onEvents(player: Player, events: Player.Events) = refresh()
+        override fun onEvents(player: Player, events: Player.Events) {
+            // Marca si la COLA cambió (armar/añadir/quitar/mover = timeline): solo entonces refresh()
+            // reconstruye su snapshot. Un cambio de pista o de play/pausa NO altera la cola. OJO: no
+            // usar EVENT_MEDIA_METADATA_CHANGED como disparador — se emite en CADA cambio de pista
+            // (los metadatos "actuales" pasan a ser los de la nueva) y reintroduciría un recorrido
+            // completo por skip (el atorón residual). Los metadatos de la biblioteca local son
+            // estáticos en sesión: se fijan al construir los MediaItem y no mutan.
+            if (events.contains(Player.EVENT_TIMELINE_CHANGED)) queueDirty = true
+            refresh()
+        }
     }
 
     /** Conecta el controlador al servicio (idempotente). Llamar desde el hilo principal. */
@@ -350,6 +368,12 @@ class PlaybackRepository(context: Context) {
 
     private fun refresh() {
         val c = controller ?: return
+        // Recorrido completo de la cola SOLO si cambió; el resto de eventos reutiliza el cacheado.
+        if (queueDirty) {
+            queueDirty = false
+            cachedQueueIds = c.queueIds()
+            _queue.value = c.queueItems()
+        }
         val item = c.currentMediaItem
         _state.value = PlaybackState(
             hasItem = item != null && c.mediaItemCount > 0,
@@ -366,15 +390,14 @@ class PlaybackRepository(context: Context) {
             queueSize = c.mediaItemCount,
             hasNext = c.hasNextMediaItem(),
             hasPrevious = c.hasPreviousMediaItem(),
-            queueIds = c.queueIds(),
+            queueIds = cachedQueueIds,
             transitionId = transitionId,
             transition = transitionKind,
         )
-        _queue.value = c.queueItems()
         syncTicker(c.isPlaying)
     }
 
-    /** Snapshot de la cola con metadatos (solo en eventos del player; barato). */
+    /** Snapshot de la cola con metadatos (solo cuando la cola CAMBIA — queueDirty; ver refresh). */
     private fun MediaController.queueItems(): List<QueueItem> =
         (0 until mediaItemCount).map { i ->
             val item = getMediaItemAt(i)
@@ -387,8 +410,8 @@ class PlaybackRepository(context: Context) {
             )
         }
 
-    // Recorre la cola solo en eventos del player (no en cada tick de posición: el ticker copia el
-    // estado sin llamar a refresh()), así que reconstruir la lista aquí es barato.
+    // Recorre la cola entera: SOLO se llama cuando la cola cambió (queueDirty), nunca por cambio de
+    // pista, play/pausa ni ticks de posición — con colas grandes este recorrido no es gratis.
     private fun MediaController.queueIds(): List<Long> =
         (0 until mediaItemCount).mapNotNull { getMediaItemAt(it).mediaId.toLongOrNull() }
 
