@@ -12,6 +12,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.core.app.NotificationChannelCompat
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.glance.appwidget.updateAll
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.SettableFuture
@@ -278,6 +281,51 @@ class MarluneMediaService : MediaSessionService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
+    override fun onStartCommand(intent: android.content.Intent?, flags: Int, startId: Int): Int {
+        val result = super.onStartCommand(intent, flags, startId)
+        ensureForegroundForColdStart()
+        return result
+    }
+
+    // Hay una notificación placeholder en foreground (arranque frío sin reproducción).
+    private var placeholderForeground = false
+
+    /**
+     * Los arranques en FRÍO desde el widget llegan por `startForegroundService` (la única vía que el
+     * sistema permite desde un toque de widget), y eso OBLIGA a llamar `startForeground` en ~5 s.
+     * Media3 solo promociona cuando ARRANCA reproducción (play/resumption): con un NEXT/PREV en frío
+     * (saltar en pausa, sin audio) nadie promocionaba y el sistema mataba el proceso con
+     * ForegroundServiceDidNotStartInTimeException. Aquí se promociona al instante con una
+     * notificación mínima y silenciosa; tras un margen, si la reproducción tomó el relevo (Media3 ya
+     * puso la suya) solo se retira la placeholder, y si no, el servicio desciende a background.
+     */
+    private fun ensureForegroundForColdStart() {
+        if (placeholderForeground) return
+        if (mediaSession?.player?.isPlaying == true) return // Media3 ya está en foreground con su notificación
+        placeholderForeground = true
+        val channel = NotificationChannelCompat.Builder(SESSION_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_LOW)
+            .setName(getString(R.string.app_name))
+            .build()
+        NotificationManagerCompat.from(this).createNotificationChannel(channel)
+        val notification = NotificationCompat.Builder(this, SESSION_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(getString(R.string.app_name))
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setSilent(true)
+            .build()
+        runCatching { startForeground(SESSION_PLACEHOLDER_NOTIFICATION_ID, notification) }
+        widgetScope.launch {
+            kotlinx.coroutines.delay(COLD_FOREGROUND_LINGER_MS) // deja asentar restauración + salto + guardado
+            placeholderForeground = false
+            if (mediaSession?.player?.isPlaying == true) {
+                // La reproducción promocionó con la notificación real de Media3: fuera solo la placeholder.
+                NotificationManagerCompat.from(this@MarluneMediaService).cancel(SESSION_PLACEHOLDER_NOTIFICATION_ID)
+            } else {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            }
+        }
+    }
+
     /**
      * Si el usuario descarta la app desde recientes y NADA se está reproduciendo, no tiene sentido
      * mantener el servicio vivo: se detiene. Si hay reproducción en curso, sigue (con su notificación).
@@ -389,5 +437,8 @@ class MarluneMediaService : MediaSessionService() {
         const val SESSION_SAVE_DEBOUNCE_MS = 500L // agrupa ráfagas de eventos en una escritura
         const val SESSION_POSITION_INTERVAL_MS = 5_000L // posición fresca sin castigar el disco
         const val SESSION_RESTORE_TIMEOUT_MS = 10_000L // techo para resolver biblioteca al restaurar
+        const val SESSION_CHANNEL_ID = "marlune_session" // canal de la notificación placeholder (frío)
+        const val SESSION_PLACEHOLDER_NOTIFICATION_ID = 41
+        const val COLD_FOREGROUND_LINGER_MS = 6_000L // margen antes de descender de foreground
     }
 }
