@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Círculo del play/pausa del widget: un OVAL real (no un rectángulo con cornerRadius/outline, que
+     algunos launchers —MIUI— rasterizan deformado como hexágono). Blanco para teñirse con el acento
+     dinámico vía ColorFilter en Glance. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="#FFFFFFFF" />
+</shape>
