@@ -14,6 +14,7 @@ import com.luis.marlune.data.lyrics.NetworkLyricsCache
 import com.luis.marlune.data.mediastore.MediaStoreAudioSource
 import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
+import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.LyricsRepository
 import com.luis.marlune.data.repository.MusicRepository
 import com.luis.marlune.data.repository.PlaylistRepository
@@ -24,13 +25,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 private const val PlayRecordDelayMs = 5_000L // ~5s reproduciendo antes de registrar (evita skips)
-private const val SessionSaveIntervalMs = 10_000L // guardado periódico de la posición mientras suena
 
 /**
  * Contenedor de dependencias manual (sin framework de DI). Vive en la Application y expone los
@@ -66,7 +66,8 @@ class AppContainer(context: Context) {
     /** Listas de reproducción del usuario (Room), con canciones resueltas contra la biblioteca. */
     val playlistRepository: PlaylistRepository = PlaylistRepository(database.playlistDao(), musicRepository)
 
-    private val sessionStore = SessionStore(context.applicationContext)
+    /** Sesión de reproducción en crudo (DataStore). La ESCRITURA la hace el servicio de playback. */
+    val sessionStore = SessionStore(context.applicationContext)
 
     /** Sesión de reproducción persistida (DataStore) resuelta contra la biblioteca. */
     val savedSessionRepository: SavedSessionRepository = SavedSessionRepository(sessionStore, musicRepository)
@@ -95,7 +96,39 @@ class AppContainer(context: Context) {
 
     init {
         recordPlaysToHistory()
-        persistSession()
+        // La persistencia de la sesión NO vive aquí: la escribe el servicio (MarluneMediaService),
+        // que posee el player y sobrevive a la UI. El escritor que había aquí observaba el
+        // PlaybackRepository de la UI y, al morir esta, seguía re-escribiendo una posición RANCIA
+        // (estado congelado) cada 10 s, pisando los datos frescos.
+        restoreSessionOnColdStart()
+    }
+
+    /**
+     * Restaura la sesión guardada al ABRIR la app con el proceso frío: rearma la cola EN PAUSA en la
+     * pista/posición/modos guardados (el usuario reanuda con play). Corre UNA sola vez por proceso
+     * (vive en el init del contenedor), y solo actúa cuando:
+     *  - el `MediaController` conectó — lo que implica permisos/onboarding superados (la UI solo
+     *    conecta tras ese gate), y
+     *  - la biblioteca está CARGADA — la sesión se resuelve contra MediaStore: ids borrados se
+     *    omiten y el índice se reajusta ([SavedSessionRepository.resolve]); si no queda nada, no
+     *    hay nada que restaurar (sin mini-player fantasma).
+     * Si al llegar aquí YA hay cola (el servicio seguía vivo, o el usuario reprodujo algo antes de
+     * cargar la biblioteca), no toca nada: la cola activa siempre gana.
+     */
+    private fun restoreSessionOnColdStart() {
+        appScope.launch {
+            playbackRepository.isConnected.first { it }
+            musicRepository.library.first { it is LibraryState.Content }
+            val session = savedSessionRepository.savedSession.first() ?: return@launch
+            if (playbackRepository.state.value.hasItem) return@launch // cola activa: no pisar
+            playbackRepository.restoreSession(
+                songs = session.songs,
+                startIndex = session.index,
+                startPositionMs = session.positionMs,
+                shuffle = session.shuffle,
+                repeatMode = session.repeatMode,
+            )
+        }
     }
 
     /**
@@ -117,32 +150,4 @@ class AppContainer(context: Context) {
         }
     }
 
-    /**
-     * Persiste la sesión (cola + índice + posición): guarda al cambiar cola/índice o al pausar
-     * (`collectLatest` reinicia y guarda al instante), y periódicamente mientras suena (para
-     * mantener la posición fresca ante un cierre en frío). NUNCA sobrescribe con estado vacío, así
-     * que un arranque en frío sin reproducir no borra la sesión guardada.
-     */
-    private fun persistSession() {
-        appScope.launch {
-            playbackRepository.state
-                .map { Triple(it.hasItem, it.currentIndex to it.mediaId, it.isPlaying) }
-                .distinctUntilChanged()
-                .collectLatest { (hasItem, _, _) ->
-                    if (!hasItem) return@collectLatest
-                    saveSessionNow()
-                    while (isActive) {
-                        delay(SessionSaveIntervalMs)
-                        saveSessionNow()
-                    }
-                }
-        }
-    }
-
-    private suspend fun saveSessionNow() {
-        val state = playbackRepository.state.value
-        if (state.hasItem && state.queueIds.isNotEmpty()) {
-            savedSessionRepository.save(state.queueIds, state.currentIndex, state.positionMs)
-        }
-    }
 }

@@ -240,6 +240,38 @@ class PlaybackRepository(context: Context) {
     }
 
     /**
+     * REARMA la cola guardada EN PAUSA en la pista/posición dadas y restaura shuffle/repeat, sin
+     * reproducir (el usuario reanuda con play; el mini-player aparece porque `hasItem` pasa a true).
+     * Nunca pisa una cola ya activa (p. ej. el servicio seguía vivo reproduciendo, o el usuario ya
+     * puso algo antes de que la biblioteca terminara de cargar). No toca el arranque normal
+     * ([playSongs] queda idéntico).
+     */
+    fun restoreSession(
+        songs: List<Song>,
+        startIndex: Int,
+        startPositionMs: Long,
+        shuffle: Boolean,
+        repeatMode: RepeatMode,
+    ) {
+        if (songs.isEmpty()) return
+        val items = songs.map { it.toMediaItem() }
+        val index = startIndex.coerceIn(0, items.lastIndex)
+        // Salto a MAIN aquí mismo: el MediaController exige hilo principal y este método se invoca
+        // desde el scope de datos (restauración en frío) — el resto del repo asume main porque
+        // siempre lo llama la UI.
+        mainScope.launch {
+            runOrQueue { c ->
+                if (c.mediaItemCount > 0) return@runOrQueue // ya hay cola activa: no pisarla jamás
+                c.shuffleModeEnabled = shuffle
+                c.repeatMode = repeatMode.toMedia3()
+                c.setMediaItems(items, index, startPositionMs.coerceAtLeast(0L))
+                c.prepare()
+                c.pause() // explícito: preparada y lista, pero SIN reproducir (reanuda el usuario)
+            }
+        }
+    }
+
+    /**
      * Encola [song] JUSTO DESPUÉS de la pista actual, sin interrumpir lo que suena (inserta en la cola
      * del `MediaController`). Si no hay nada en la cola, inicia la reproducción con esa canción. Si el
      * controlador aún no está conectado, la acción queda pendiente y se ejecuta al conectar.
@@ -463,26 +495,32 @@ class PlaybackRepository(context: Context) {
         RepeatMode.OFF -> Player.REPEAT_MODE_OFF
     }
 
-    private fun Song.toMediaItem(manual: Boolean = false): MediaItem =
-        MediaItem.Builder()
-            .setMediaId(id.toString()) // el _ID de MediaStore: clave para referenciar (Room, luego)
-            .setUri(contentUri) // content URI, nunca ruta (scoped storage)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(title)
-                    .setArtist(artist)
-                    .setAlbumTitle(album)
-                    .setArtworkUri(artworkUri) // la notificación y la UI cargan la carátula desde aquí
-                    // Marca de "añadido a mano": viaja con el ítem por el MediaController y deja que la
-                    // UI de cola lo agrupe aparte. No altera la reproducción ni la cola real.
-                    .apply { if (manual) setExtras(Bundle().apply { putBoolean(EXTRA_MANUAL_QUEUE, true) }) }
-                    .build(),
-            )
-            .build()
-
     private companion object {
         const val POSITION_TICK_MS = 500L
-        const val EXTRA_MANUAL_QUEUE = "com.luis.marlune.MANUAL_QUEUE"
         const val SLEEP_FADE_STEP_MS = 40L // 12 pasos ≈ 480 ms de fade-out
     }
 }
+
+private const val EXTRA_MANUAL_QUEUE = "com.luis.marlune.MANUAL_QUEUE"
+
+/**
+ * Convierte una canción de la biblioteca en el `MediaItem` del player (metadatos + content URI).
+ * A nivel de archivo (interno al paquete) para que TAMBIÉN el servicio pueda rearmar la cola al
+ * restaurar la sesión en frío, con exactamente los mismos items que el arranque normal.
+ */
+internal fun Song.toMediaItem(manual: Boolean = false): MediaItem =
+    MediaItem.Builder()
+        .setMediaId(id.toString()) // el _ID de MediaStore: clave para referenciar (Room, luego)
+        .setUri(contentUri) // content URI, nunca ruta (scoped storage)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setTitle(title)
+                .setArtist(artist)
+                .setAlbumTitle(album)
+                .setArtworkUri(artworkUri) // la notificación y la UI cargan la carátula desde aquí
+                // Marca de "añadido a mano": viaja con el ítem por el MediaController y deja que la
+                // UI de cola lo agrupe aparte. No altera la reproducción ni la cola real.
+                .apply { if (manual) setExtras(Bundle().apply { putBoolean(EXTRA_MANUAL_QUEUE, true) }) }
+                .build(),
+        )
+        .build()
