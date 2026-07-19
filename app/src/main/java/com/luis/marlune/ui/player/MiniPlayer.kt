@@ -31,7 +31,6 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -69,6 +68,7 @@ import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -144,10 +144,11 @@ fun MiniPlayer(
     var cardWidthPx by remember { mutableStateOf(0f) }
     val context = LocalContext.current
 
-    // Identidad MOSTRADA como UNA unidad (título + artista + miniatura): durante el slide se congela
-    // ENTERA y se sustituye por la nueva SOLO al terminar la animación (ver el finally de abajo), para
-    // que los tres no descuadren ni se cuelen a media animación. La carátula nueva se precarga en caché
-    // de memoria mientras tanto (efecto de más abajo). El resto (play/pausa) sigue en vivo de uiState.
+    // Identidad MOSTRADA como UNA unidad (título + artista + miniatura): se congela ENTERA mientras la
+    // tarjeta SALE de pantalla y se sustituye por la nueva en el instante del SALTO al lado opuesto
+    // (fuera de pantalla; ver el vigilante de abajo), para que la tarjeta que ENTRA ya vista la pista
+    // nueva y los tres no descuadren nunca. La carátula nueva se precarga en caché de memoria mientras
+    // tanto (efecto de más abajo). El resto (play/pausa) sigue en vivo de uiState.
     var displayedTrack by remember { mutableStateOf(MiniShownTrack(uiState.title, uiState.artist, uiState.artworkUri)) }
     var holdArtworkForSlide by remember { mutableStateOf(false) }
 
@@ -165,7 +166,7 @@ fun MiniPlayer(
                     TrackChange.DIRECT -> null // carga directa: sin slide
                 }
                 if (forward != null) {
-                    holdArtworkForSlide = true // retén la miniatura anterior durante el slide
+                    holdArtworkForSlide = true // retén la miniatura anterior mientras SALE de pantalla
                     // La confirmación es una animación de SOLTAR: corre en su propia corrutina y
                     // escribe liveOffsetX (vía offsetX). runTrackSlideAnimation se queda idéntico; solo
                     // se le siembra la posición actual del dedo y se refleja su valor en el estado.
@@ -173,11 +174,24 @@ fun MiniPlayer(
                     releaseJob.value = scope.launch {
                         offsetX.snapTo(liveOffsetX) // continúa desde donde quedó el dedo
                         val mirror = launch { snapshotFlow { offsetX.value }.collect { liveOffsetX = it } }
+                        // Identidad nueva en el instante del SALTO al lado opuesto (el snapTo interno del
+                        // slide), con la tarjeta FUERA de pantalla: la que ENTRA ya es la pista nueva desde
+                        // su primer frame visible. Sustituir al TERMINAR era el bug (la tarjeta entrante
+                        // vestía los datos viejos toda la entrada). Vigilante pasivo: observa, no anima.
+                        val exitSign = if (forward) -1f else 1f // mismo mapeo que runTrackSlideAnimation
+                        val widthPx = cardWidthPx
+                        val swapAtSnap = launch {
+                            snapshotFlow { offsetX.value }.first { it * exitSign < -widthPx * 0.5f }
+                            val latest = latestUiState.value
+                            displayedTrack = MiniShownTrack(latest.title, latest.artist, latest.artworkUri)
+                        }
                         try {
                             runTrackSlideAnimation(forward, offsetX, cardWidthPx, reducedMotion)
                         } finally {
                             mirror.cancel()
-                            // Slide terminado (o cancelado): los tres cambian a la vez a la pista actual.
+                            swapAtSnap.cancel()
+                            // Red de seguridad (cancelación o movimiento reducido, sin salto): asegura la
+                            // pista ACTUAL al cerrar. Si el swap del salto ya corrió, esto no cambia nada.
                             val latest = latestUiState.value
                             displayedTrack = MiniShownTrack(latest.title, latest.artist, latest.artworkUri)
                             holdArtworkForSlide = false
@@ -404,7 +418,7 @@ fun MiniPlayer(
             // Pista MOSTRADA (retenida entera durante el slide), no uiState directo, para no descuadrar.
             // La miniatura es el elemento compartido que viaja mini↔full.
             TrackThumbnail(
-                accent = MaterialTheme.colorScheme.primary,
+                accent = MarluneTheme.colors.accent, // acento dinámico ANIMADO (lector fino)
                 artworkUri = displayedTrack.artworkUri,
                 modifier = artModifier,
                 size = 44.dp,

@@ -6,8 +6,8 @@ import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import android.net.Uri
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -20,20 +20,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.luis.marlune.R
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
@@ -59,7 +62,8 @@ private enum class DragAxis { Undecided, Horizontal, VerticalDown, Ignored }
  */
 @Composable
 fun AlbumArt(
-    artwork: ImageBitmap?,
+    artworkUri: Uri?,
+    instantArtSwap: Boolean,
     trackOffset: Animatable<Float, AnimationVector1D>,
     canGoPrevious: Boolean,
     canGoNext: Boolean,
@@ -191,7 +195,11 @@ fun AlbumArt(
                     if (lyrics) {
                         Box(Modifier.fillMaxSize()) { lyricsContent() }
                     } else {
-                        ArtSurface(artwork = artwork, modifier = Modifier.fillMaxSize())
+                        ArtSurface(
+                            artworkUri = artworkUri,
+                            instantSwap = instantArtSwap,
+                            modifier = Modifier.fillMaxSize(),
+                        )
                     }
                 }
             }
@@ -201,7 +209,8 @@ fun AlbumArt(
 
 @Composable
 private fun ArtSurface(
-    artwork: ImageBitmap?,
+    artworkUri: Uri?,
+    instantSwap: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val reducedMotion = LocalReducedMotion.current
@@ -209,18 +218,32 @@ private fun ArtSurface(
         .clip(RoundedCornerShape(ArtCorner))
         .background(MarluneTheme.colors.surfaceElevated)
 
-    // Crossfade corto SOLO del contenido (imagen ↔ placeholder). No toca el gesto ni el slide: durante
-    // el deslizamiento la carátula mostrada se mantiene fija, así que esto solo suaviza la sustitución
-    // final (o la llegada tardía de la imagen sobre el placeholder). Nunca un destello a media animación.
+    // Crossfade corto SOLO del contenido, para las cargas SIN slide (directa/metadatos). Con
+    // [instantSwap] (swap durante el slide, hecho fuera de pantalla en el salto) el corte es SECO:
+    // un fundido aquí seguiría corriendo mientras la carátula ENTRA en pantalla y dejaría ver la
+    // imagen anterior mezclada unos frames — justo el destello que se quiere eliminar.
     Crossfade(
-        targetState = artwork,
-        animationSpec = if (reducedMotion) snap() else tween(120),
+        targetState = artworkUri,
+        animationSpec = if (reducedMotion || instantSwap) snap() else tween(120),
         label = "artContentCrossfade",
         modifier = clipped,
-    ) { art ->
-        if (art != null) {
-            Image(
-                bitmap = art,
+    ) { uri ->
+        if (uri != null) {
+            // MISMO camino cacheado que el mini/TrackThumbnail: clave estable por URI (memoria+disco).
+            // placeholderMemoryCacheKey: si el full-res aún no está decodificado, arranca pintando la
+            // MINIATURA ya cacheada bajo esa clave (nunca en blanco) y Coil funde al full-res al llegar.
+            val context = LocalContext.current
+            val key = remember(uri) { uri.toString() }
+            AsyncImage(
+                model = remember(key, context) {
+                    ImageRequest.Builder(context)
+                        .data(uri)
+                        .memoryCacheKey(key)
+                        .diskCacheKey(key)
+                        .placeholderMemoryCacheKey(key)
+                        .crossfade(true)
+                        .build()
+                },
                 contentDescription = stringResource(R.string.player_artwork),
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),

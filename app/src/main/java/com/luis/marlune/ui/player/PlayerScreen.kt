@@ -30,11 +30,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -52,10 +51,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.core.graphics.drawable.toBitmap
 import coil.imageLoader
 import coil.request.ImageRequest
-import coil.request.SuccessResult
 import com.luis.marlune.R
 import com.luis.marlune.domain.model.RepeatMode
 import com.luis.marlune.playback.TrackChange
@@ -68,10 +65,11 @@ import com.luis.marlune.ui.player.components.PlayerControls
 import com.luis.marlune.ui.player.components.runTrackSlideAnimation
 import com.luis.marlune.ui.theme.LocalReducedMotion
 import com.luis.marlune.ui.theme.MarluneTheme
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Identidad visible de la pista que se PINTA (una sola unidad): título + artista + carátula juntos. */
-private data class ShownTrack(val title: String, val artist: String, val artwork: ImageBitmap?)
+private data class ShownTrack(val title: String, val artist: String, val artworkUri: Uri?)
 
 /**
  * Pantalla del Reproductor (sin estado).
@@ -128,34 +126,23 @@ fun PlayerScreen(
         contract = ActivityResultContracts.OpenDocumentTree(),
     ) { uri -> if (uri != null) onLyricsFolderPicked(uri) }
 
-    // Carátula real: se carga perezosamente con Coil desde el content URI (caché memoria+disco).
+    // Carátula real: la pinta Coil por el MISMO camino cacheado que el mini/TrackThumbnail (misma
+    // clave estable por URI, ver AlbumArt); aquí solo se PRECARGA y se decide QUÉ identidad se pinta.
     // El acento dinámico NO se extrae aquí: lo hace un efecto compartido en MarluneApp al cambiar la
     // pista actual, para que el color se refresque en todas las vistas sin abrir Now Playing.
     // Estado ACTUAL siempre disponible dentro de las corrutinas (finally del slide), aunque se capturara
     // otro al lanzar el efecto.
     val latestUiState = rememberUpdatedState(uiState)
 
-    // Identidad MOSTRADA como UNA unidad (título + artista + carátula juntos): durante el slide se congela
-    // ENTERA, así los tres no pueden descuadrar ni colarse antes de tiempo. La carátula nueva se PRECARGA
-    // y se muestra solo al terminar (ver el efecto de trackTransition). Lo demás (me gusta, marea, tiempos)
-    // sigue leyéndose en vivo de uiState: eso refleja la pista que YA suena.
-    var loadedArtwork by remember { mutableStateOf<ImageBitmap?>(null) }
-    var loadedArtworkUri by remember { mutableStateOf(uiState.artworkUri) } // a qué pista pertenece loadedArtwork
-    var displayedTrack by remember { mutableStateOf(ShownTrack(uiState.title, uiState.artist, null)) }
+    // Identidad MOSTRADA como UNA unidad (título + artista + carátula juntos): se congela ENTERA mientras
+    // la carátula SALE de pantalla y se sustituye en el instante del SALTO al lado opuesto (fuera de
+    // pantalla; ver el vigilante del observador de trackTransition), así la que ENTRA ya es la pista
+    // nueva y los tres no descuadran nunca. La identidad es la URI, no un bitmap decodificado aparte:
+    // siempre está "lista" al sustituirla, y la imagen sale de la caché de Coil compartida con el mini
+    // (precargada en el efecto de más abajo). Lo demás (me gusta, marea, tiempos) sigue leyéndose en
+    // vivo de uiState: eso refleja la pista que YA suena.
+    var displayedTrack by remember { mutableStateOf(ShownTrack(uiState.title, uiState.artist, uiState.artworkUri)) }
     var holdArtworkForSlide by remember { mutableStateOf(false) }
-    LaunchedEffect(uiState.title, uiState.artist, uiState.artworkUri) {
-        val uri = uiState.artworkUri
-        val bitmap = if (uri == null) null else runCatching {
-            val result = context.imageLoader.execute(
-                ImageRequest.Builder(context).data(uri).allowHardware(false).build(),
-            )
-            (result as? SuccessResult)?.drawable?.toBitmap()
-        }.getOrNull()?.asImageBitmap()
-        loadedArtwork = bitmap
-        loadedArtworkUri = uri
-        // Ya cargada: los tres a la vez (si no hay slide; si lo hay, se espera al finally).
-        if (!holdArtworkForSlide) displayedTrack = ShownTrack(uiState.title, uiState.artist, bitmap)
-    }
 
     // Desplazamiento horizontal del cambio de pista, compartido por la carátula y el título
     // para que ambos acompañen el dedo con el mismo offset.
@@ -177,31 +164,49 @@ fun PlayerScreen(
                 TrackChange.DIRECT -> null // carga directa: sin slide; el contenido aparece/crossfade
             }
             if (forward != null) {
-                // Mantiene la carátula ANTERIOR durante todo el slide; al terminar (el suspend de
-                // runTrackSlideAnimation retorna) sustituye por la nueva ya precargada → sin destello.
+                // Retiene la pista ANTERIOR mientras SALE de pantalla y sustituye la identidad ENTERA en
+                // el instante del SALTO al lado opuesto (el snapTo interno del slide): la carátula que
+                // ENTRA ya es la nueva desde su primer frame visible, y el swap ocurre FUERA de pantalla
+                // (el crossfade del contenido no se ve). Sustituir al TERMINAR era el bug: la tarjeta
+                // entrante vestía los datos viejos toda la entrada y hacía "pop" al asentarse.
                 holdArtworkForSlide = true
+                val exitSign = if (forward) -1f else 1f // mismo mapeo que runTrackSlideAnimation
+                // Vigilante PASIVO del salto (solo observa el offset, no anima): dispara UNA vez cuando
+                // el valor aparece por el lado de ENTRADA (signo opuesto a la salida, más de medio ancho).
+                val swapAtSnap = launch {
+                    snapshotFlow { trackOffset.value }.first { it * exitSign < -artWidthPx * 0.5f }
+                    val latest = latestUiState.value
+                    displayedTrack = ShownTrack(latest.title, latest.artist, latest.artworkUri)
+                }
                 try {
                     runTrackSlideAnimation(forward, trackOffset, artWidthPx, reducedMotion)
                 } finally {
-                    // Slide terminado (o cancelado): los tres cambian a la vez a la pista ACTUAL, ya precargada.
+                    swapAtSnap.cancel()
+                    // Red de seguridad (cancelación o movimiento reducido, donde no hay salto): asegura
+                    // la pista ACTUAL al cerrar. Si el swap del salto ya corrió, esto no cambia nada.
                     val latest = latestUiState.value
-                    displayedTrack = ShownTrack(latest.title, latest.artist, loadedArtwork)
+                    displayedTrack = ShownTrack(latest.title, latest.artist, latest.artworkUri)
                     holdArtworkForSlide = false
                 }
             }
         }
     }
 
-    // RESYNC al APARECER la rama o al cambiar de pista SIN slide: la vista que entra en la transición
-    // mini↔full nunca arranca con datos rancios (el bug: cambiar de canción y luego expandir/minimizar
-    // mostraba la anterior durante el crossfade). Va DESPUÉS del observador de trackTransition: en un
-    // SWIPE, holdArtworkForSlide ya está activo aquí, así que NO resincroniza (respeta la retención y no
-    // reintroduce el parpadeo). La carátula solo si la precargada es de ESTA pista → nunca descuadre.
-    LaunchedEffect(uiState.artworkUri, uiState.title) {
-        if (!holdArtworkForSlide) {
-            val art = if (loadedArtworkUri == uiState.artworkUri) loadedArtwork else null
-            displayedTrack = ShownTrack(uiState.title, uiState.artist, art)
+    // PRECARGA + RESYNC (mismo mecanismo que el mini): la carátula nueva se mete en la caché de Coil
+    // con la MISMA clave estable que TrackThumbnail/AlbumArt mientras corre el slide; y al aparecer la
+    // rama o cambiar de pista SIN slide, la identidad se copia ENTERA al instante (nunca datos rancios
+    // en el crossfade mini↔full). DEBE ir DESPUÉS del observador de trackTransition: en un swipe,
+    // holdArtworkForSlide ya está activo cuando esto corre (este efecto ya no suspende antes de la
+    // comprobación), así que NO resincroniza a media animación (respeta la retención, sin parpadeo).
+    LaunchedEffect(uiState.title, uiState.artist, uiState.artworkUri) {
+        val uri = uiState.artworkUri
+        if (uri != null) {
+            val key = uri.toString()
+            context.imageLoader.enqueue(
+                ImageRequest.Builder(context).data(uri).memoryCacheKey(key).diskCacheKey(key).build(),
+            )
         }
+        if (!holdArtworkForSlide) displayedTrack = ShownTrack(uiState.title, uiState.artist, uri)
     }
 
     // Colapso dirigido hacia el mini-player: 0 = completo, 1 = colapsado. La vista sigue el
@@ -275,8 +280,11 @@ fun PlayerScreen(
             Spacer(Modifier.weight(0.5f))
 
             // Carátula héroe (o letras al tocarla): elemento compartido, nítido, sin colapso.
+            // instantArtSwap: durante el slide (hold activo) la sustitución de carátula es un corte SECO
+            // — ocurre fuera de pantalla en el salto; un crossfade seguiría visible durante la entrada.
             AlbumArt(
-                artwork = displayedTrack.artwork,
+                artworkUri = displayedTrack.artworkUri,
+                instantArtSwap = holdArtworkForSlide,
                 trackOffset = trackOffset,
                 canGoPrevious = uiState.hasPrevious,
                 canGoNext = uiState.hasNext,

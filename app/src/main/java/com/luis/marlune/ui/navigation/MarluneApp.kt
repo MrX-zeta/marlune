@@ -44,6 +44,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.luis.marlune.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -96,6 +97,10 @@ import com.luis.marlune.ui.theme.MarluneTheme
 private const val ALBUM_ART_KEY = "album-art"
 private const val TITLE_KEY = "player-title"
 private const val ARTIST_KEY = "player-artist"
+
+// Margen para calentar carátulas vecinas FUERA de la ventana del cambio de pista (slide ≈ 600 ms):
+// el decode nunca cae en los frames de la animación.
+private const val NEIGHBOR_ART_PRECACHE_DELAY_MS = 700L
 
 /**
  * Andamiaje raíz de Marlune.
@@ -188,6 +193,26 @@ fun MarluneApp(
             (result as? SuccessResult)?.drawable?.toBitmap()
         }.getOrNull()
         if (bitmap != null) accentController.updateFromArtwork(bitmap) else accentController.reset()
+    }
+
+    // Precarga de carátulas VECINAS (anterior y siguiente de la cola) en la caché de Coil con la clave
+    // estable compartida (TrackThumbnail/AlbumArt): al cambiar de pista, la imagen entrante ya está
+    // decodificada y el swap del slide es un hit de memoria. IMPORTANTE: corre APLAZADA, en REPOSO —
+    // este efecto se relanza justo cuando cambia currentIndex (la ventana de la transición), y decodificar
+    // el vecino fresco AHÍ competía con los frames del arranque del slide (la micro-pausa al deslizar
+    // sonando, primera pasada por la cola: sonando se avanza a territorio frío; en pausa se juega entre
+    // pistas ya cacheadas, por eso ahí era fluido). Con el margen, el slide ya asentó cuando decodifica;
+    // si llega otro cambio antes, el efecto se relanza y el margen vuelve a contar. Solo calienta caché.
+    LaunchedEffect(queueState.currentIndex, queueState.items) {
+        delay(NEIGHBOR_ART_PRECACHE_DELAY_MS)
+        val items = queueState.items
+        listOf(queueState.currentIndex - 1, queueState.currentIndex + 1).forEach { index ->
+            val uri = items.getOrNull(index)?.artworkUri ?: return@forEach
+            val key = uri.toString()
+            accentContext.imageLoader.enqueue(
+                ImageRequest.Builder(accentContext).data(uri).memoryCacheKey(key).diskCacheKey(key).build(),
+            )
+        }
     }
 
     val navController = rememberNavController()
