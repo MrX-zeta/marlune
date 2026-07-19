@@ -18,6 +18,10 @@
          defecto. Con el ajuste apagado, la app no hace NINGUNA petición de red. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Repintar el widget tras el arranque del sistema (si no, el launcher se queda con su
+         placeholder de carga hasta que algo despierte el proceso). -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:name=".MarluneApplication"
         android:allowBackup="true"
@@ -61,6 +65,15 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/marlune_widget_info" />
+        </receiver>
+
+        <!-- Repinta los widgets al completar el arranque (en MIUI requiere "Autoinicio" concedido). -->
+        <receiver
+            android:name=".ui.widget.WidgetBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
         </receiver>
     </application>
 

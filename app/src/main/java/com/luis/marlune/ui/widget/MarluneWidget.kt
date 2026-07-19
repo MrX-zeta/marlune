@@ -2,10 +2,12 @@ package com.luis.marlune.ui.widget
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,6 +47,9 @@ import androidx.glance.unit.ColorProvider
 import com.luis.marlune.MarluneApplication
 import com.luis.marlune.R
 import com.luis.marlune.data.repository.FavoritesRepository
+import com.luis.marlune.di.AppContainer
+import com.luis.marlune.ui.theme.accentFromArtwork
+import kotlinx.coroutines.flow.first
 
 // --- Paleta del widget (fuente de verdad; el widget es SIEMPRE oscuro) ---
 // Un ColorProvider fijo (de un solo color) es independiente del tema del sistema: fuerza ese color
@@ -86,14 +91,43 @@ class MarluneWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
-        val favorites = (context.applicationContext as MarluneApplication).container.favoritesRepository
-        provideContent { WidgetContent(favorites) }
+        val container = (context.applicationContext as MarluneApplication).container
+        // RESPALDO con el servicio MUERTO (proceso recién nacido: tras un reinicio, tras un kill):
+        // la última pista de la SESIÓN GUARDADA, en pausa, en vez de caer a "Toca para abrir". Su
+        // play REANUDA de verdad (intent de botón multimedia → onPlaybackResumption). Los metadatos
+        // vienen del propio store — sin despertar la biblioteca. Si el bus tiene pista, manda el bus.
+        val fallback = storedSessionSnapshot(context, container)
+        provideContent { WidgetContent(container.favoritesRepository, fallback) }
+    }
+
+    /** Snapshot pintable desde la sesión guardada; `null` si no hay sesión (o el bus ya manda). */
+    private suspend fun storedSessionSnapshot(
+        context: Context,
+        container: AppContainer,
+    ): WidgetPlaybackState? {
+        if (WidgetPlaybackBus.state.value.hasItem) return null // servicio vivo: su estado es la verdad
+        val stored = runCatching { container.sessionStore.session.first() }.getOrNull() ?: return null
+        if (stored.title.isBlank()) return null // sesión sin metadatos (formato previo): vacío honesto
+        val mediaId = stored.ids.getOrNull(stored.index.coerceIn(0, stored.ids.lastIndex))?.toString()
+        val artwork = loadWidgetArtwork(context, stored.artworkUri?.let(Uri::parse), mediaId)
+        return WidgetPlaybackState(
+            hasItem = true,
+            mediaId = mediaId,
+            title = stored.title,
+            artist = stored.artist,
+            artwork = artwork,
+            accentArgb = artwork?.let { accentFromArtwork(it)?.toArgb() },
+            isPlaying = false,
+            shuffle = stored.shuffle,
+        )
     }
 }
 
 @Composable
-private fun WidgetContent(favorites: FavoritesRepository) {
-    val snapshot by WidgetPlaybackBus.state.collectAsState()
+private fun WidgetContent(favorites: FavoritesRepository, fallback: WidgetPlaybackState?) {
+    val busSnapshot by WidgetPlaybackBus.state.collectAsState()
+    // El bus (servicio vivo) siempre gana; sin él, la sesión guardada; sin ninguna, estado vacío.
+    val snapshot = if (busSnapshot.hasItem) busSnapshot else fallback ?: busSnapshot
 
     Box(modifier = GlanceModifier.fillMaxSize().background(ImageProvider(R.drawable.widget_background))) {
         if (!snapshot.hasItem) {

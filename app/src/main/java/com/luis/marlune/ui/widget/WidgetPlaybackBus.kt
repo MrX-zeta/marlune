@@ -54,6 +54,9 @@ object WidgetPlaybackBus {
     @Volatile private var player: Player? = null
     private val main = Handler(Looper.getMainLooper())
 
+    /** Hay player real conectado (servicio vivo). Si no, los comandos de transporte son no-op. */
+    val hasPlayer: Boolean get() = player != null
+
     fun attachPlayer(p: Player) { player = p }
 
     fun detachPlayer() {
