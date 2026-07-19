@@ -134,7 +134,7 @@ private fun PlayPauseButton(
 
     // Pulso de acento al iniciar reproducción: el círculo va a acento vivo y decae, calmado.
     val accentVivid = MarluneTheme.colors.accentVivid
-    val basePrimary = MaterialTheme.colorScheme.primary
+    val basePrimary = MarluneTheme.colors.accent // acento dinámico ANIMADO (lector fino)
     val pulse = remember { Animatable(0f) }
     LaunchedEffect(isPlaying, reducedMotion) {
         if (isPlaying && !reducedMotion) {

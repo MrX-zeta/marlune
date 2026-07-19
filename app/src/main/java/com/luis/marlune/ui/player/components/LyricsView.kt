@@ -166,7 +166,7 @@ private fun SyncedLyrics(
         }
     }
 
-    val accent = MaterialTheme.colorScheme.primary // acento DINÁMICO
+    val accent = MarluneTheme.colors.accent // acento DINÁMICO animado (lector fino)
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),

@@ -74,7 +74,7 @@ fun Marea(
     progress: Float,
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
-    waveColor: Color = MaterialTheme.colorScheme.primary,
+    waveColor: Color = MarluneTheme.colors.accent, // acento dinámico ANIMADO (lector fino)
     trackColor: Color = MarluneTheme.colors.accentMuted,
     playheadColor: Color = waveColor,
     backgroundColor: Color = MaterialTheme.colorScheme.background,
