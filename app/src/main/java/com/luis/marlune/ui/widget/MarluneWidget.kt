@@ -33,6 +33,7 @@ import androidx.glance.layout.ContentScale
 import androidx.glance.layout.Row
 import androidx.glance.layout.RowScope
 import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
 import androidx.glance.layout.fillMaxSize
 import androidx.glance.layout.fillMaxWidth
 import androidx.glance.layout.height
@@ -69,14 +70,14 @@ private val ArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSi
 private val LargeTitleStyle = TextStyle(color = ColorProvider(TextPrimary), fontSize = 17.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
 private val LargeArtistStyle = TextStyle(color = ColorProvider(TextSecondary), fontSize = 13.sp, fontWeight = FontWeight.Normal, textAlign = TextAlign.Center)
 
-// Umbrales por ALTURA real (SizeMode.Exact): <110 compacto (4x1, horizontal) · 110–180 medio (4x2,
-// horizontal) · >=180 grande (4x3+/casi cuadrado, vertical). Subido a 180 para que un 4x2 alto NO
-// caiga en el vertical: el 4x2 se queda horizontal y solo el grande/máximo usa el vertical centrado.
-private val FullThreshold = 110.dp
-private val LargeThreshold = 180.dp
+// Umbrales por ALTURA real (SizeMode.Exact): <120 compacto (tira: carátula + 3 controles, sin texto)
+// · 120–239 MEDIANO (horizontal: carátula ALTA a la izquierda, texto+controles a la derecha) ·
+// >=240 MÁXIMO (vertical centrado). El vertical queda reservado al tamaño grande de verdad: en los
+// medianos "casi cuadrados" la carátula competía con el texto por el alto y quedaba pequeña.
+private val FullThreshold = 120.dp
+private val LargeThreshold = 240.dp
 
-/** Padding horizontal del contenido completo (por lado). También el margen mínimo controles↔borde. */
-private const val FULL_HPAD = 12f
+/** Padding horizontal del layout grande (por lado). */
 private const val LARGE_HPAD = 14f
 
 /**
@@ -180,40 +181,112 @@ private fun CompactLayout(s: WidgetPlaybackState, accent: Color) {
 }
 
 /**
- * Layout B (medio): HORIZONTAL como el mini-player. Carátula cuadrada a la IZQUIERDA que LLENA el alto
- * del bloque superior (ya no flota con hueco muerto); a su derecha, título y artista (1 línea, elipsis)
- * en un bloque con defaultWeight que absorbe el ancho sobrante (se recortan antes las letras que los
- * controles). Los controles van DEBAJO, a todo el ancho —elegido así para que quepan los 5 con áreas de
- * 48/56 dp (a la derecha del texto solo cabrían 3 en la columna estrecha)—.
+ * Layout B (MEDIANO): HORIZONTAL con la carátula de protagonista — cuadrada a la IZQUIERDA ocupando
+ * casi todo el alto de la tarjeta (8 dp de margen; era lo que se veía pequeño en el casi cuadrado) —
+ * y a su derecha una columna (defaultWeight) con el TEXTO arriba y los CONTROLES debajo (anterior ·
+ * play/pausa · siguiente, áreas de 48/56 dp), centrados verticalmente. Título y artista: exactamente
+ * 1 línea con elipsis manual sobre el ancho REAL del bloque — nunca empujan ni solapan controles.
  */
 @Composable
-private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
+private fun FullLayout(s: WidgetPlaybackState, @Suppress("UNUSED_PARAMETER") isFavorite: Boolean, accent: Color) {
     val context = LocalContext.current
     val openNowPlaying = GlanceModifier.clickable(
         actionStartActivity(openAppIntent(context, nowPlaying = true)),
         rippleOverride = R.drawable.widget_ripple_none,
     )
-    val innerWidthDp = LocalSize.current.width.value - FULL_HPAD * 2f
-    // Los 5 controles con áreas de 48/56 dp solo si hay ancho: 5 celdas de peso; el play necesita >= 56.
-    // Si no, se ocultan shuffle y me gusta (no se aprietan ni se cortan): anterior/play/siguiente.
-    val showShuffleFav = innerWidthDp >= 280f
-    // La carátula llena el alto del bloque superior (alto − padding − fila de controles): sin flotar.
-    val artDim = (LocalSize.current.height.value - 72f).coerceIn(48f, 120f)
+    val size = LocalSize.current
+    // Carátula ALTA: todo el alto menos los márgenes de 8 dp, acotada para no comerse el ancho.
+    val artDim = minOf(size.height.value - 16f, size.width.value * 0.45f).coerceAtLeast(64f)
+    // Ancho real del bloque de texto: ancho útil − carátula − separación (para la elipsis manual).
+    val textWidthDp = (size.width.value - 16f - artDim - 12f).coerceAtLeast(64f)
 
-    Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = FULL_HPAD.dp, vertical = 8.dp)) {
-        Row(
-            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Artwork(s.artwork, size = artDim.dp, corner = 12.dp, modifier = openNowPlaying)
-            Spacer(GlanceModifier.width(14.dp))
-            Column(modifier = GlanceModifier.defaultWeight().then(openNowPlaying)) {
-                Text(s.title, maxLines = 1, style = TitleStyle)
-                Spacer(GlanceModifier.height(3.dp))
-                Text(s.artist, maxLines = 1, style = ArtistStyle)
+    Row(
+        modifier = GlanceModifier.fillMaxSize().padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Artwork(s.artwork, size = artDim.dp, corner = 12.dp, modifier = openNowPlaying)
+        Spacer(GlanceModifier.width(12.dp))
+        Column(modifier = GlanceModifier.defaultWeight().fillMaxHeight()) {
+            // El TEXTO va centrado en el alto SOBRANTE (bloque con peso): el aire entre texto y
+            // controles crece con la tarjeta y nunca quedan pegados.
+            Box(
+                modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(modifier = GlanceModifier.fillMaxWidth().then(openNowPlaying)) {
+                    Text(ellipsize(s.title, (textWidthDp / 8f).toInt()), maxLines = 1, style = TitleStyle)
+                    Spacer(GlanceModifier.height(3.dp))
+                    Text(ellipsize(s.artist, (textWidthDp / 7f).toInt()), maxLines = 1, style = ArtistStyle)
+                }
             }
+            // Fila de controles con ALTO FIJO de 56 dp y el play REDUCIDO a 48 dp SOLO en este
+            // tamaño: con 8 dp de holgura vertical el launcher ya no comprime el círculo (a 56/56
+            // exactos MIUI lo rasterizaba deformado). Área táctil 48 dp, dentro del mínimo.
+            Row(
+                modifier = GlanceModifier.fillMaxWidth().height(56.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                WeightedControl {
+                    ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 24.dp) {
+                        actionRunCallback<WidgetPreviousAction>()
+                    }
+                }
+                WeightedControl { PlayPauseButton(s.isPlaying, 48.dp, accent) }
+                WeightedControl {
+                    ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
+                        actionRunCallback<WidgetNextAction>()
+                    }
+                }
+            }
+            // Margen con el borde inferior: los controles no besan el filo de la tarjeta.
+            Spacer(GlanceModifier.height(6.dp))
         }
-        // Fila de controles repartida con defaultWeight: se adapta al ancho real, sin recortes.
+    }
+}
+
+/**
+ * Layout C (grande / casi cuadrado): disposición VERTICAL. Carátula cuadrada CENTRADA arriba en un
+ * bloque con defaultWeight (si el alto aprieta, cede ELLA), y DEBAJO —FUERA del bloque flexible—
+ * título y artista con su FILA PROPIA cada uno: exactamente 1 línea con elipsis (regla del widget:
+ * sin marquee ni scroll, o cabe o "…"; nunca 2+ líneas comiéndose al artista, nunca texto cortado a
+ * media altura). La fila de controles queda al pie. Texto centrado, casando con la carátula.
+ */
+@Composable
+private fun LargeLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
+    val context = LocalContext.current
+    val openNowPlaying = GlanceModifier.clickable(
+        actionStartActivity(openAppIntent(context, nowPlaying = true)),
+        rippleOverride = R.drawable.widget_ripple_none,
+    )
+    val size = LocalSize.current
+    val innerWidthDp = size.width.value - LARGE_HPAD * 2f
+    val showShuffleFav = innerWidthDp >= 260f
+    // Carátula: aproxima el hueco libre (alto − padding − texto+controles ≈160dp); acotada por ancho.
+    val artDim = (size.height.value - 160f).coerceIn(56f, minOf(innerWidthDp, 200f))
+
+    Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = LARGE_HPAD.dp, vertical = 12.dp)) {
+        Box(
+            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Artwork(s.artwork, size = artDim.dp, corner = 14.dp, modifier = openNowPlaying)
+        }
+        Spacer(GlanceModifier.height(10.dp))
+        // 1 línea SIEMPRE, elipsis manual (Glance no expone ellipsize): el título jamás invade al artista.
+        Text(
+            ellipsize(s.title, (innerWidthDp / 9.5f).toInt()),
+            maxLines = 1,
+            style = LargeTitleStyle,
+            modifier = GlanceModifier.fillMaxWidth().then(openNowPlaying),
+        )
+        Spacer(GlanceModifier.height(3.dp))
+        Text(
+            ellipsize(s.artist, (innerWidthDp / 7.5f).toInt()),
+            maxLines = 1,
+            style = LargeArtistStyle,
+            modifier = GlanceModifier.fillMaxWidth(),
+        )
+        Spacer(GlanceModifier.height(8.dp))
         Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (showShuffleFav) {
                 WeightedControl {
@@ -249,72 +322,12 @@ private fun FullLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Colo
 }
 
 /**
- * Layout C (grande / casi cuadrado): disposición VERTICAL. Carátula cuadrada CENTRADA arriba (crece con
- * el alto real), y DEBAJO el título (hasta 2 líneas) y el artista a TODO el ancho del widget —así un
- * título normal cabe entero y uno largo tiene dos líneas antes de recortar; Glance no puede desplazar
- * texto, hay que darle ancho—. La fila de controles queda al pie. El bloque superior toma el alto libre
- * con defaultWeight (los controles nunca se recortan). Texto centrado, para casar con la carátula centrada.
+ * Elipsis MANUAL a 1 línea: Glance/RemoteViews no expone `ellipsize`, así que el corte con "…" se
+ * hace aquí, estimando caracteres por ancho disponible. Preferimos "…" un pelín pronto a un corte
+ * seco o a un texto que invada la fila siguiente. [maxChars] ya viene derivado del ancho real.
  */
-@Composable
-private fun LargeLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Color) {
-    val context = LocalContext.current
-    val openNowPlaying = GlanceModifier.clickable(
-        actionStartActivity(openAppIntent(context, nowPlaying = true)),
-        rippleOverride = R.drawable.widget_ripple_none,
-    )
-    val size = LocalSize.current
-    val innerWidthDp = size.width.value - LARGE_HPAD * 2f
-    val showShuffleFav = innerWidthDp >= 260f
-    // Carátula cuadrada: llena el bloque superior (alto − padding − texto − controles) y crece con el
-    // widget, acotada por el ancho. Al ir en un bloque con defaultWeight, si el alto aprieta se recorta
-    // ANTES que los controles (que quedan siempre al pie).
-    val artDim = (size.height.value - 156f).coerceIn(72f, minOf(innerWidthDp, 200f))
-
-    Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = LARGE_HPAD.dp, vertical = 12.dp)) {
-        Column(
-            modifier = GlanceModifier.fillMaxWidth().defaultWeight(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Artwork(s.artwork, size = artDim.dp, corner = 14.dp, modifier = openNowPlaying)
-            Spacer(GlanceModifier.height(12.dp))
-            Text(s.title, maxLines = 2, style = LargeTitleStyle, modifier = GlanceModifier.fillMaxWidth().then(openNowPlaying))
-            Spacer(GlanceModifier.height(3.dp))
-            Text(s.artist, maxLines = 1, style = LargeArtistStyle, modifier = GlanceModifier.fillMaxWidth())
-        }
-        Row(modifier = GlanceModifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            if (showShuffleFav) {
-                WeightedControl {
-                    ControlButton(
-                        R.drawable.ic_widget_shuffle,
-                        context.getString(R.string.player_shuffle),
-                        if (s.shuffle) Accent else TextTertiary, 48.dp, 22.dp,
-                    ) { actionRunCallback<WidgetShuffleAction>() }
-                }
-            }
-            WeightedControl {
-                ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 24.dp) {
-                    actionRunCallback<WidgetPreviousAction>()
-                }
-            }
-            WeightedControl { PlayPauseButton(s.isPlaying, 56.dp, accent) }
-            WeightedControl {
-                ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
-                    actionRunCallback<WidgetNextAction>()
-                }
-            }
-            if (showShuffleFav) {
-                WeightedControl {
-                    ControlButton(
-                        if (isFavorite) R.drawable.ic_widget_favorite_filled else R.drawable.ic_widget_favorite,
-                        context.getString(if (isFavorite) R.string.player_unlike else R.string.player_like),
-                        if (isFavorite) AccentVivid else TextTertiary, 48.dp, 22.dp,
-                    ) { actionRunCallback<WidgetFavoriteAction>() }
-                }
-            }
-        }
-    }
-}
+private fun ellipsize(text: String, maxChars: Int): String =
+    if (text.length <= maxChars) text else text.take((maxChars - 1).coerceAtLeast(1)).trimEnd() + "…"
 
 /** Celda de igual peso que centra su control: reparte la fila por el ancho real, sin recortar extremos. */
 @Composable
@@ -397,8 +410,10 @@ private fun ControlButton(
 
 /**
  * Play/pausa: círculo teñido con el [accent] dinámico de la carátula (o la marca #8E7DF0 si es monocroma
- * o no hay) con el icono Rounded en #0A0910. Se usan drawables RESOURCE (no bitmaps): al alternar cambia
- * el resId, así `setImageViewResource` repinta bien en MIUI. El icono de play va algo mayor. Área ~56 dp.
+ * o no hay) con el icono Rounded en #0A0910. El círculo es un DRAWABLE OVAL real (widget_circle) teñido
+ * por ColorFilter — no un Box con cornerRadius/outline, que algunos launchers (MIUI) rasterizan
+ * deformado (hexágono) en contenedores anidados. Drawables RESOURCE (no bitmaps): al alternar cambia el
+ * resId, así `setImageViewResource` repinta bien en MIUI. El icono de play va algo mayor. Área ~56 dp.
  */
 @Composable
 private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, accent: Color) {
@@ -409,16 +424,17 @@ private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, accent: Color) {
             .clickable(actionRunCallback<WidgetPlayPauseAction>(), rippleOverride = R.drawable.widget_ripple_none),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = GlanceModifier.size(circle).background(fixed(accent)).cornerRadius(circle / 2),
-            contentAlignment = Alignment.Center,
-        ) {
-            Image(
-                provider = ImageProvider(if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play),
-                contentDescription = context.getString(if (isPlaying) R.string.player_pause else R.string.player_play),
-                colorFilter = ColorFilter.tint(fixed(Bg)),
-                modifier = GlanceModifier.size(if (isPlaying) 24.dp else 28.dp),
-            )
-        }
+        Image(
+            provider = ImageProvider(R.drawable.widget_circle),
+            contentDescription = null,
+            colorFilter = ColorFilter.tint(fixed(accent)),
+            modifier = GlanceModifier.size(circle),
+        )
+        Image(
+            provider = ImageProvider(if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play),
+            contentDescription = context.getString(if (isPlaying) R.string.player_pause else R.string.player_play),
+            colorFilter = ColorFilter.tint(fixed(Bg)),
+            modifier = GlanceModifier.size(if (isPlaying) 24.dp else 28.dp),
+        )
     }
 }
