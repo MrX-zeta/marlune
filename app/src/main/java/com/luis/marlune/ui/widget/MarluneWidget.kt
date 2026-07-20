@@ -3,6 +3,7 @@ package com.luis.marlune.ui.widget
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,6 +52,7 @@ import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.di.AppContainer
 import com.luis.marlune.ui.theme.accentFromArtwork
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 // --- Paleta del widget (fuente de verdad; el widget es SIEMPRE oscuro) ---
 // Un ColorProvider fijo (de un solo color) es independiente del tema del sistema: fuerza ese color
@@ -80,6 +82,11 @@ private val LargeThreshold = 240.dp
 /** Padding horizontal del layout grande (por lado). */
 private const val LARGE_HPAD = 14f
 
+private const val TAG = "MarluneWidget"
+
+/** Techo de la lectura del respaldo en frío: pasado esto, se pinta el estado vacío sin esperar más. */
+private const val FALLBACK_READ_TIMEOUT_MS = 3_000L
+
 /**
  * Widget de pantalla de inicio de Marlune con Jetpack Glance. Lee el estado del [WidgetPlaybackBus]
  * (publicado por el servicio de reproducción), NO del `MediaController` de la UI: así no se congela al
@@ -92,12 +99,20 @@ class MarluneWidget : GlanceAppWidget() {
     override val sizeMode = SizeMode.Exact
 
     override suspend fun provideGlance(context: Context, id: GlanceId) {
+        Log.d(TAG, "provideGlance: inicio")
         val container = (context.applicationContext as MarluneApplication).container
+        Log.d(TAG, "provideGlance: container listo")
         // RESPALDO con el servicio MUERTO (proceso recién nacido: tras un reinicio, tras un kill):
         // la última pista de la SESIÓN GUARDADA, en pausa, en vez de caer a "Toca para abrir". Su
         // play REANUDA de verdad (intent de botón multimedia → onPlaybackResumption). Los metadatos
         // vienen del propio store — sin despertar la biblioteca. Si el bus tiene pista, manda el bus.
-        val fallback = storedSessionSnapshot(context, container)
+        //
+        // CON TECHO: el SessionWorker de Glance no arma su temporizador hasta la PRIMERA composición
+        // exitosa — si esta lectura se suspende, el widget se queda en el spinner de carga para
+        // siempre (visto en instalación virgen). El respaldo jamás debe retrasar el primer pintado:
+        // sin él a tiempo, estado vacío honesto, y el bus lo corrige al haber reproducción.
+        val fallback = withTimeoutOrNull(FALLBACK_READ_TIMEOUT_MS) { storedSessionSnapshot(context, container) }
+        Log.d(TAG, "provideGlance: fallback=${fallback != null}, componiendo")
         provideContent { WidgetContent(container.favoritesRepository, fallback) }
     }
 
@@ -107,8 +122,12 @@ class MarluneWidget : GlanceAppWidget() {
         container: AppContainer,
     ): WidgetPlaybackState? {
         if (WidgetPlaybackBus.state.value.hasItem) return null // servicio vivo: su estado es la verdad
-        val stored = runCatching { container.sessionStore.session.first() }.getOrNull() ?: return null
+        Log.d(TAG, "snapshot: leyendo sesión guardada")
+        val stored = runCatching { container.sessionStore.session.first() }
+            .onFailure { Log.w(TAG, "snapshot: fallo leyendo sesión", it) }
+            .getOrNull() ?: return null.also { Log.d(TAG, "snapshot: sin sesión guardada") }
         if (stored.title.isBlank()) return null // sesión sin metadatos (formato previo): vacío honesto
+        Log.d(TAG, "snapshot: sesión con pista, cargando carátula")
         val mediaId = stored.ids.getOrNull(stored.index.coerceIn(0, stored.ids.lastIndex))?.toString()
         val artwork = loadWidgetArtwork(context, stored.artworkUri?.let(Uri::parse), mediaId)
         return WidgetPlaybackState(
