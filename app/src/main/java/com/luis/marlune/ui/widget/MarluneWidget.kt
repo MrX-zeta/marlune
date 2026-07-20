@@ -171,7 +171,7 @@ private fun CompactLayout(s: WidgetPlaybackState, accent: Color) {
                 actionRunCallback<WidgetPreviousAction>()
             }
         }
-        WeightedControl { PlayPauseButton(s.isPlaying, 56.dp, accent) }
+        WeightedControl { PlayPauseButton(s.isPlaying, boxSize = 56.dp, circle = 48.dp, accent = accent) }
         WeightedControl {
             ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
                 actionRunCallback<WidgetNextAction>()
@@ -184,7 +184,7 @@ private fun CompactLayout(s: WidgetPlaybackState, accent: Color) {
  * Layout B (MEDIANO): HORIZONTAL con la carátula de protagonista — cuadrada a la IZQUIERDA ocupando
  * casi todo el alto de la tarjeta (8 dp de margen; era lo que se veía pequeño en el casi cuadrado) —
  * y a su derecha una columna (defaultWeight) con el TEXTO arriba y los CONTROLES debajo (anterior ·
- * play/pausa · siguiente, áreas de 48/56 dp), centrados verticalmente. Título y artista: exactamente
+ * play/pausa · siguiente, áreas de 48/52 dp), centrados verticalmente. Título y artista: exactamente
  * 1 línea con elipsis manual sobre el ancho REAL del bloque — nunca empujan ni solapan controles.
  */
 @Composable
@@ -219,23 +219,29 @@ private fun FullLayout(s: WidgetPlaybackState, @Suppress("UNUSED_PARAMETER") isF
                     Text(ellipsize(s.artist, (textWidthDp / 7f).toInt()), maxLines = 1, style = ArtistStyle)
                 }
             }
-            // Fila de controles con ALTO FIJO de 56 dp y el play REDUCIDO a 48 dp SOLO en este
-            // tamaño: con 8 dp de holgura vertical el launcher ya no comprime el círculo (a 56/56
-            // exactos MIUI lo rasterizaba deformado). Área táctil 48 dp, dentro del mínimo.
+            // Fila de controles con ALTO FIJO de 60 dp y TODO de tamaño FIJO: ningún control usa
+            // weight/fillMaxWidth aquí. MIUI aplastaba el play (hexágono) cuando su celda de peso
+            // cedía ancho a los laterales; con cajas fijas (48 · 52 · 48 dp) nada puede comprimir
+            // el círculo. El aire entre controles son SPACERS FIJOS de 2 dp y el grupo va centrado:
+            // el sobrante queda como margen a los lados del grupo, nunca dentro del play. Ojo al
+            // tocar este valor: además del spacer hay aire INVISIBLE inherente (~10 dp) porque las
+            // cajas táctiles de 48/52 dp son mayores que el icono de 32 y el círculo de 48. La barra
+            // del skip va ENGROSADA en los propios drawables (3/24 del viewport): con la original de
+            // 2/24, MIUI la difuminaba hasta perderla al reescalar fuera de los 24 dp intrínsecos.
+            val controlsGap = 0.dp
             Row(
-                modifier = GlanceModifier.fillMaxWidth().height(56.dp),
+                modifier = GlanceModifier.fillMaxWidth().height(60.dp).padding(end = 1.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                WeightedControl {
-                    ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 24.dp) {
-                        actionRunCallback<WidgetPreviousAction>()
-                    }
+                ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 30.dp) {
+                    actionRunCallback<WidgetPreviousAction>()
                 }
-                WeightedControl { PlayPauseButton(s.isPlaying, 48.dp, accent) }
-                WeightedControl {
-                    ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
-                        actionRunCallback<WidgetNextAction>()
-                    }
+                Spacer(GlanceModifier.width(controlsGap))
+                PlayPauseButton(s.isPlaying, boxSize = 48.dp, circle = 48.dp, accent = accent)
+                Spacer(GlanceModifier.width(controlsGap))
+                ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 30.dp) {
+                    actionRunCallback<WidgetNextAction>()
                 }
             }
             // Margen con el borde inferior: los controles no besan el filo de la tarjeta.
@@ -261,8 +267,9 @@ private fun LargeLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Col
     val size = LocalSize.current
     val innerWidthDp = size.width.value - LARGE_HPAD * 2f
     val showShuffleFav = innerWidthDp >= 260f
-    // Carátula: aproxima el hueco libre (alto − padding − texto+controles ≈160dp); acotada por ancho.
-    val artDim = (size.height.value - 160f).coerceIn(56f, minOf(innerWidthDp, 200f))
+    // Carátula: aproxima el hueco libre (alto − padding − texto+controles ≈168dp, con el play de
+    // 64 dp del escalón grande); acotada por ancho.
+    val artDim = (size.height.value - 168f).coerceIn(56f, minOf(innerWidthDp, 200f))
 
     Column(modifier = GlanceModifier.fillMaxSize().padding(horizontal = LARGE_HPAD.dp, vertical = 12.dp)) {
         Box(
@@ -298,13 +305,16 @@ private fun LargeLayout(s: WidgetPlaybackState, isFavorite: Boolean, accent: Col
                 }
             }
             WeightedControl {
-                ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 24.dp) {
+                ControlButton(R.drawable.ic_widget_skip_previous, context.getString(R.string.player_previous), TextSecondary, 48.dp, 30.dp) {
                     actionRunCallback<WidgetPreviousAction>()
                 }
             }
-            WeightedControl { PlayPauseButton(s.isPlaying, 56.dp, accent) }
+            // Escalón grande: caja de 64 dp con círculo de 56 visibles (sin fila de alto fijo aquí,
+            // así que la caja no compite con el contenedor y el círculo no corre riesgo de deformarse).
+            // Laterales con icono de 32 dp, IGUAL que en el mediano: es el tamaño validado en device.
+            WeightedControl { PlayPauseButton(s.isPlaying, boxSize = 64.dp, circle = 56.dp, accent = accent) }
             WeightedControl {
-                ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 24.dp) {
+                ControlButton(R.drawable.ic_widget_skip_next, context.getString(R.string.player_next), TextSecondary, 48.dp, 30.dp) {
                     actionRunCallback<WidgetNextAction>()
                 }
             }
@@ -413,12 +423,14 @@ private fun ControlButton(
  * o no hay) con el icono Rounded en #0A0910. El círculo es un DRAWABLE OVAL real (widget_circle) teñido
  * por ColorFilter — no un Box con cornerRadius/outline, que algunos launchers (MIUI) rasterizan
  * deformado (hexágono) en contenedores anidados. Drawables RESOURCE (no bitmaps): al alternar cambia el
- * resId, así `setImageViewResource` repinta bien en MIUI. El icono de play va algo mayor. Área ~56 dp.
+ * resId, así `setImageViewResource` repinta bien en MIUI. El icono de play va algo mayor.
+ *
+ * El tamaño es ESCALONADO por layout (Glance no permite proporciones continuas): [boxSize] es el área
+ * táctil (>= 48 dp siempre) y [circle] el diámetro visible; los iconos escalan con el círculo.
  */
 @Composable
-private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, accent: Color) {
+private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, circle: Dp, accent: Color) {
     val context = LocalContext.current
-    val circle = boxSize - 8.dp // deja un anillo táctil alrededor del círculo visible
     Box(
         modifier = GlanceModifier.size(boxSize)
             .clickable(actionRunCallback<WidgetPlayPauseAction>(), rippleOverride = R.drawable.widget_ripple_none),
@@ -434,7 +446,7 @@ private fun PlayPauseButton(isPlaying: Boolean, boxSize: Dp, accent: Color) {
             provider = ImageProvider(if (isPlaying) R.drawable.ic_widget_pause else R.drawable.ic_widget_play),
             contentDescription = context.getString(if (isPlaying) R.string.player_pause else R.string.player_play),
             colorFilter = ColorFilter.tint(fixed(Bg)),
-            modifier = GlanceModifier.size(if (isPlaying) 24.dp else 28.dp),
+            modifier = GlanceModifier.size(if (isPlaying) circle / 2 else circle / 2 + 4.dp),
         )
     }
 }
