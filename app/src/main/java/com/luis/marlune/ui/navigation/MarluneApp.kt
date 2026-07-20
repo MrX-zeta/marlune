@@ -40,12 +40,16 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.luis.marlune.R
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -222,11 +226,28 @@ fun MarluneApp(
     // contenido (NavHost) no se recompone por el playback (el mini-player sí, donde se usa).
     val expandPlayer = remember { { playerExpanded = true } }
 
-    // Petición del widget de abrir Now Playing: expande el reproductor si hay pista. Se consume una
-    // sola vez (aditivo; no altera el resto del flujo). Sin pista, solo se consume (queda en Inicio).
+    // Petición del widget de abrir Now Playing. En FRÍO, al componerse esto la pista aún no existe
+    // (el MediaController conecta y la restauración en pausa arma la cola tras permisos+biblioteca),
+    // así que decidir al instante consumía el extra dejando al usuario en Inicio: se espera CON TECHO
+    // a que hasTrack llegue — `first { it }` expande en cuanto aparece, sin agotar la ventana; con la
+    // app ya viva es inmediato. Si expira (sesión vacía de verdad), queda en Inicio. El extra se
+    // consume SIEMPRE al salir (llegue o no la pista) para no re-disparar en recomposiciones; si el
+    // efecto se cancela a medias (p. ej. rotación), el extra sigue vivo y el reintento es correcto.
     LaunchedEffect(openNowPlaying) {
         if (openNowPlaying) {
-            if (playerState.hasTrack) playerExpanded = true
+            val restored = withTimeoutOrNull(5_000L) {
+                snapshotFlow { playerState.hasTrack }.first { it }
+            } != null
+            if (restored) {
+                // La rama COLAPSADA (Home + mini-player, visible al llegar hasTrack) debe haberse
+                // dibujado antes del flip: en frío la pista llega en los primeros frames y expandir
+                // ahí construía Now Playing en seco, sin origen del que viajar el elemento
+                // compartido. Espera de FRAMES (sincronizada con el render, no un temporizador):
+                // frame 1 recompone el mini-player, frame 2 lo deja dibujado como punto de partida.
+                withFrameNanos { }
+                withFrameNanos { }
+                playerExpanded = true // transición mini→full NORMAL (AnimatedContent decide, snap si reduced motion)
+            }
             onNowPlayingConsumed()
         }
     }

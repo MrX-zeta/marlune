@@ -26,7 +26,12 @@ class MainActivity : ComponentActivity() {
                 val request by openNowPlaying
                 MarluneApp(
                     openNowPlaying = request,
-                    onNowPlayingConsumed = { openNowPlaying.value = false },
+                    onNowPlayingConsumed = {
+                        openNowPlaying.value = false
+                        // Consumo REAL: al rotar, la Activity renace y relee getIntent(); si el
+                        // extra siguiera en él, re-expandiría Now Playing tras cada rotación.
+                        intent?.removeExtra(EXTRA_OPEN_NOW_PLAYING)
+                    },
                 )
             }
         }
