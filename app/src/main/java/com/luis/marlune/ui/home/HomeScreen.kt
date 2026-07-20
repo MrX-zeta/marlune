@@ -32,7 +32,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.LibraryMusic
 import com.luis.marlune.R
-import com.luis.marlune.di.rememberFavoritesRepository
 import com.luis.marlune.di.rememberHistoryRepository
 import com.luis.marlune.di.rememberMusicRepository
 import com.luis.marlune.di.rememberPlaybackRepository
@@ -63,7 +62,6 @@ fun HomeRoute(
             rememberHistoryRepository(),
             rememberPlaybackRepository(),
             rememberSavedSessionRepository(),
-            rememberFavoritesRepository(),
         ),
     ),
     playback: PlaybackRepository = rememberPlaybackRepository(),
@@ -161,7 +159,6 @@ fun HomeScreen(
 
             Spacer(Modifier.height(28.dp))
             HomeQuickAccess(
-                likedCount = uiState.likedCount,
                 continueSession = uiState.continueSession,
                 onLiked = onOpenLiked,
                 onRecentlyAdded = onOpenRecentlyAdded,

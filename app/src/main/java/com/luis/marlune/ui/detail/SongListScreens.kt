@@ -44,7 +44,9 @@ fun LikedSongsRoute(contentPadding: PaddingValues, onBack: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
     val nowPlaying by vm.nowPlaying.collectAsStateWithLifecycle()
 
-    DetailScaffold(stringResource(R.string.shortcut_liked), onBack, contentPadding) { bottomPadding ->
+    // Con canciones, el título vive en la cabecera desplazable (como álbum/lista) para no duplicarlo
+    // con la barra; en vacío no hay cabecera, así que la barra recupera el título.
+    DetailScaffold(if (state.songs.isEmpty()) stringResource(R.string.shortcut_liked) else "", onBack, contentPadding) { bottomPadding ->
         SongListBody(
             state = state,
             nowPlaying = nowPlaying,
@@ -53,6 +55,17 @@ fun LikedSongsRoute(contentPadding: PaddingValues, onBack: () -> Unit) {
             emptyTitle = stringResource(R.string.liked_empty_title),
             emptyHint = stringResource(R.string.liked_empty_hint),
             onPlay = vm::play,
+            header = {
+                DetailHeader(
+                    covers = headerCovers(state.songs, max = 4), // mosaico con las favoritas
+                    coverFallbackKey = 0L,
+                    title = stringResource(R.string.shortcut_liked),
+                    songCount = state.songs.size,
+                    totalDurationMs = state.totalDurationMs,
+                    onPlay = { vm.play(0) },
+                    onShuffle = vm::playShuffled,
+                )
+            },
         )
     }
 }

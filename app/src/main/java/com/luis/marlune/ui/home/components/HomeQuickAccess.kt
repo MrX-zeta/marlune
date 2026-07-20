@@ -39,7 +39,6 @@ import com.luis.marlune.ui.theme.MarluneTheme
  */
 @Composable
 fun HomeQuickAccess(
-    likedCount: Int,
     continueSession: ContinueInfo?,
     onLiked: () -> Unit,
     onRecentlyAdded: () -> Unit,
@@ -55,7 +54,6 @@ fun HomeQuickAccess(
             IconCard(
                 icon = Icons.Rounded.Favorite,
                 label = stringResource(R.string.shortcut_liked),
-                count = if (likedCount > 0) likedCount else null,
                 onClick = onLiked,
             )
         }
@@ -63,7 +61,6 @@ fun HomeQuickAccess(
             IconCard(
                 icon = Icons.Rounded.NewReleases,
                 label = stringResource(R.string.shortcut_recently_added),
-                count = null,
                 onClick = onRecentlyAdded,
             )
         }
@@ -71,7 +68,6 @@ fun HomeQuickAccess(
             IconCard(
                 icon = Icons.Rounded.Shuffle,
                 label = stringResource(R.string.shortcut_mix),
-                count = null,
                 onClick = onMix,
             )
         }
@@ -90,12 +86,11 @@ fun HomeQuickAccess(
     }
 }
 
-/** Card de icono + etiqueta (+ conteo opcional). Mismo lenguaje que la card "Me gusta" original. */
+/** Card de icono + etiqueta, sin adornos: las cuatro comparten el mismo lenguaje limpio. */
 @Composable
 private fun IconCard(
     icon: ImageVector,
     label: String,
-    count: Int?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -119,14 +114,6 @@ private fun IconCard(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            if (count != null) {
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    text = count.toString(),
-                    style = MarluneTheme.typography.bodyMedium,
-                    color = MarluneTheme.colors.textSecondary,
-                )
-            }
         }
     }
 }

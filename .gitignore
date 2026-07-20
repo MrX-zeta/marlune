@@ -23,6 +23,7 @@ build/
 secrets.properties
 apikeys.properties
 env.properties
+keystore.properties
 
 # Basura del sistema operativo (Windows/macOS)
 Thumbs.db

@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.luis.marlune.data.repository.FavoritesRepository
 import com.luis.marlune.data.repository.HistoryRepository
 import com.luis.marlune.data.repository.LibraryState
 import com.luis.marlune.data.repository.MusicRepository
@@ -23,16 +22,15 @@ import java.time.LocalTime
 private const val MixSize = 50
 
 /**
- * ViewModel de Inicio: "Escuchado hace poco" (historial real), conteo de "Me gusta" y la card
- * "Continuar" sobre la sesión persistida. Además dos ACCIONES locales: un Mix barajado de la
- * biblioteca (sesgado a las menos escuchadas si hay historial) y reanudar la sesión guardada.
+ * ViewModel de Inicio: "Escuchado hace poco" (historial real) y la card "Continuar" sobre la sesión
+ * persistida. Además dos ACCIONES locales: un Mix barajado de la biblioteca (sesgado a las menos
+ * escuchadas si hay historial) y reanudar la sesión guardada.
  */
 class HomeViewModel(
     private val music: MusicRepository,
     private val history: HistoryRepository,
     private val playback: PlaybackRepository,
     savedSession: SavedSessionRepository,
-    favorites: FavoritesRepository,
 ) : ViewModel() {
 
     private val session: StateFlow<SavedSession?> =
@@ -42,22 +40,20 @@ class HomeViewModel(
         combine(
             music.library,
             history.recentlyPlayed,
-            favorites.favoriteSongs,
             session,
-        ) { libraryState, recent, liked, savedSession ->
+        ) { libraryState, recent, savedSession ->
             HomeUiState(
                 greeting = greetingNow(),
                 recent = recent,
                 isLoading = libraryState is LibraryState.Loading,
                 libraryEmpty = libraryState is LibraryState.Content && libraryState.songs.isEmpty(),
-                likedCount = liked.size,
                 continueSession = savedSession?.current?.let { ContinueInfo(it.title, it.artworkUri) },
             )
         }.flowOn(Dispatchers.Default)
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(5_000),
-                initialValue = HomeUiState(greetingNow(), emptyList(), isLoading = true, libraryEmpty = false, likedCount = 0, continueSession = null),
+                initialValue = HomeUiState(greetingNow(), emptyList(), isLoading = true, libraryEmpty = false, continueSession = null),
             )
 
     /**
@@ -96,8 +92,7 @@ class HomeViewModel(
             history: HistoryRepository,
             playback: PlaybackRepository,
             savedSession: SavedSessionRepository,
-            favorites: FavoritesRepository,
         ): androidx.lifecycle.ViewModelProvider.Factory =
-            viewModelFactory { initializer { HomeViewModel(music, history, playback, savedSession, favorites) } }
+            viewModelFactory { initializer { HomeViewModel(music, history, playback, savedSession) } }
     }
 }

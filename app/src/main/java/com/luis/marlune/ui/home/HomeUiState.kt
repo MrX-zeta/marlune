@@ -25,7 +25,6 @@ data class HomeUiState(
     val recent: List<Song>,
     val isLoading: Boolean,
     val libraryEmpty: Boolean,
-    val likedCount: Int,
     val continueSession: ContinueInfo?,
 ) {
     companion object {
@@ -37,7 +36,6 @@ data class HomeUiState(
             },
             isLoading = false,
             libraryEmpty = false,
-            likedCount = 3,
             continueSession = ContinueInfo("Marea nocturna", null),
         )
 
