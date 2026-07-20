@@ -497,7 +497,15 @@ private fun SettingsScreen(
                                 else R.string.settings_add_widget_manual,
                             ),
                             onClick = if (widgetSupported) {
-                                { WidgetPinner.requestPin(context) }
+                                {
+                                    // Máximo 1 widget: si ya está anclado, avisa y no vuelve a pedirlo
+                                    // (repetir el pin añadía copias sin ningún feedback).
+                                    if (WidgetPinner.isPinned(context)) {
+                                        Toast.makeText(context, R.string.settings_add_widget_already, Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        WidgetPinner.requestPin(context)
+                                    }
+                                }
                             } else null,
                             trailing = {
                                 if (widgetSupported) {

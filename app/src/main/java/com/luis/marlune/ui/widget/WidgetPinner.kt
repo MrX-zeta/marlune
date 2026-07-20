@@ -20,6 +20,15 @@ object WidgetPinner {
     }
 
     /**
+     * `true` si ya hay al menos una instancia del widget anclada. Se consulta EN EL MOMENTO del clic
+     * (no cachear): el usuario puede añadir o quitar el widget desde el launcher con la app abierta.
+     */
+    fun isPinned(context: Context): Boolean {
+        val provider = ComponentName(context, MarluneWidgetReceiver::class.java)
+        return AppWidgetManager.getInstance(context).getAppWidgetIds(provider).isNotEmpty()
+    }
+
+    /**
      * Pide anclar el widget. Devuelve `false` si no está soportado (SDK < 26 o launcher incompatible),
      * en cuyo caso conviene mostrar la pista manual en vez de un botón que no hace nada.
      */
