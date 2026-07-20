@@ -18,6 +18,17 @@
     <init>();
 }
 
+# --- WorkManager (transitiva vía Glance) ---
+# El SessionWorker de Glance corre dentro de WorkManager, y WorkerWrapper instancia el
+# InputMerger POR REFLEXIÓN desde el nombre de clase guardado en su base de datos
+# (androidx.work.OverwritingInputMerger por defecto). R8 lo poda (bug conocido de
+# androidx.work con R8 full mode: "Could not create Input Merger") y todo trabajo muere
+# ANTES de ejecutar el worker: provideGlance nunca corre y el widget se queda clavado en
+# el spinner de carga inicial. Visto en device con el release. Keep de nombre + ctor.
+-keep class * extends androidx.work.InputMerger {
+    <init>();
+}
+
 # --- Crashes legibles en producción ---
 # Conserva números de línea (y anonimiza el nombre de archivo) para que los
 # stacktraces de Play Console apunten a líneas reales pese a la ofuscación.
